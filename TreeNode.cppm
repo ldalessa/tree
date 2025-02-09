@@ -5,6 +5,8 @@ module;
 export module tree:TreeNode;
 
 import :exit_scope;
+import :options;
+import :testing;
 import :types;
 import :Key;
 import std;
@@ -27,19 +29,19 @@ namespace tree
 		TreeNode* _parent{};
 		std::unique_ptr<TreeNode> _children[2]{};
 
-		TreeNode(Key key)
+		constexpr TreeNode(Key key)
 			: TreeNode::variant::variant(snode())
 			, _key(key)
 		{
 		}
 
-		TreeNode(Key key, Value value)
+		constexpr TreeNode(Key key, Value value)
 			: TreeNode::variant::variant(cnode(std::move(value)))
 			, _key(key)
 		{
 		}
 
-		TreeNode(std::unique_ptr<TreeNode> a, std::unique_ptr<TreeNode> b)
+		constexpr TreeNode(std::unique_ptr<TreeNode> a, std::unique_ptr<TreeNode> b)
 			: _key(a->_key ^ b->_key)
 			, _children{std::move(a), std::move(b)}
 		{
@@ -86,12 +88,21 @@ namespace tree
 			};
 		}
 
-		constexpr auto insert(Key key, Value value) -> TreeNode&
+		constexpr auto insert(Key key, Value value) -> cnode&
 		{
-			assert(_key <= key and not (_children[0] <= key) and not (_children[1] <= key));
+			assert(_key <= key);
 			
 			if (_key == key) {
 				return set_value(std::move(value));
+			}
+
+			if (_children[0] <= key) {
+				assert(not (_children[1] <= key));
+				return _children[0]->insert(key, std::move(value));
+			}
+
+			if (_children[1] <= key) {
+				return _children[1]->insert(key, std::move(value));
 			}
 
 			auto const _ = exit_scope([&] {
@@ -110,26 +121,27 @@ namespace tree
 			}
 
 			if (_children[0] == nullptr) {
-				return *_set_child(0, std::move(node));
+				return std::get<cnode>(*_set_child(0, std::move(node)));
 			}
 
 			if (_children[1] == nullptr) {
-				return *_set_child(1, std::move(node));
+				return std::get<cnode>(*_set_child(1, std::move(node)));
 			}
 
 			_set_child(0, std::make_unique<TreeNode>(_take_child(0), _take_child(1)));
 			_set_child(1, std::move(node));
-			return *_children[1];
+			return std::get<cnode>(*_children[1]);
 		}
-
-		constexpr auto set_value(Value value) -> TreeNode&
+		
+		constexpr auto set_value(Value value) -> cnode&
 		{
 			if (auto p = std::get_if<cnode>(this)) {
 				p->value = std::move(value);
-				return *this;
+				return *p;
 			}
-			
-			return *this = TreeNode(_key, std::move(value));
+
+			this->template emplace<cnode>(std::move(value));
+			return std::get<cnode>(*this);
 		}
 		
 	private:
@@ -209,3 +221,33 @@ namespace tree
 			-> ARROW(a and a->_key <= b);
 	};
 }
+
+#undef DNDEBUG
+
+static testing::test<[] {
+	TreeNode<int> root("0/0");
+	assert(root._parent == nullptr);
+	assert(root._children[0] == nullptr);
+	assert(root._children[1] == nullptr);
+		
+	auto& a = root.insert("1/128", 0);
+	// assert(root._children[0] == &a);
+	assert(root._children[0]->_children[0] == nullptr);
+	assert(root._children[0]->_children[1] == nullptr);
+	assert(root._children[1] == nullptr);
+	// {
+	// 	auto const [s, t] = root.find("1/128", nullptr);
+	// 	assert(s == a);
+	// 	assert(t == a);
+	// }
+		
+	auto& b = root.insert("0/128", 1);
+	// assert(root._children[0] == &b);
+	assert(root._children[0]->_children[0] == nullptr);
+	assert(root._children[0]->_children[1] == nullptr);
+	// assert(root._children[1] == &a);
+	assert(root._children[1]->_children[0] == nullptr);
+	assert(root._children[1]->_children[1] == nullptr);
+		
+	return true;
+ }> test_insert;

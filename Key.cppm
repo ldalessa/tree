@@ -4,6 +4,7 @@ module;
 
 export module tree:Key;
 
+import :testing;
 import :types;
 import std;
 
@@ -66,13 +67,15 @@ namespace tree
 			return _size;
 		}
 
-		auto operator[](u32 i) const -> u64 {
-			return _shift_right(_data, 128u - i) & (u64)1;
+		constexpr auto operator[](u32 i) const -> u64 {
+			assert(i < 128u);
+			return _shift_right(_data, 127u - i) & (u64)1;
 		}
 		
 		constexpr friend auto operator==(Key, Key) -> bool = default;
 
-		constexpr friend auto operator<=>(Key a, Key b) -> std::partial_ordering {
+		constexpr friend auto operator<=>(Key a, Key b) -> std::partial_ordering
+		{
 			if (a._size < b._size and a._matches_prefix(b._data)) {
 				return std::partial_ordering::less;
 			}
@@ -88,7 +91,8 @@ namespace tree
 			return std::partial_ordering::unordered;
 		}
 
-		constexpr friend auto operator^(Key a, Key b) -> Key {
+		constexpr friend auto operator^(Key a, Key b) -> Key
+		{
 			u128 const c = a._data ^ b._data;
 			u32 const n = std::min({_clz(c), a._size, b._size});
 			return Key(a._data, n);
@@ -104,7 +108,7 @@ namespace tree
 		}
 
 		static constexpr auto _clz(u128 x) -> u32 {
-			return (u32)__builtin_clzg(x, 0);
+			return (u32)__builtin_clzg(x, 128);
 		}
 
 		static constexpr auto _mask(u128 x, u32 size) -> u128 {
@@ -162,53 +166,53 @@ struct std::formatter<Key>
 
 #undef DNDEBUG
 
-#define TEST(...)								\
-	static_assert([] {							\
-		return true;							\
-	}())
+static auto test_equivalent = testing::test<[]{
+	Key a{}, b{};
+	assert(a == b);
+	assert(a <= b);
+	assert(a >= b);
+	assert(not (a < b));
+	assert(not (b < a));
+	return true;
+ }>{};
 
-TEST({
-		Key a{}, b{};
-		assert(a == b);
-		assert(a <= b);
-		assert(b <= a);
-		assert(not (a < b));
-		assert(not (b < a));
-	});
+static auto test_greater = testing::test<[]{
+	Key a("1/1"), b{};
+	assert(a > b);
+	assert(a >= b);
+	assert(a != b);
+	assert(not (a < b));
+	assert(not (a <= b));
+	return true;
+ }>{};
 
-TEST({
-		Key a("1/1"), b{};
-		assert(b < a);
-		assert(b <= a);
-		assert(a != b);
-		assert(not (a < b));
-		assert(not (a <= b));
-	});
+static auto test_unordered = testing::test<[]{
+	Key a("1/1"), b{"0/1"};
+	assert(not (a < b));
+	assert(not (a <= b));
+	assert(not (a == b));
+	assert(not (a >= b));
+	assert(not (a > b));
+	assert(a != b);
+	return true;
+ }>{};
 
-TEST({
-		Key a("1/1"), b{"0/1"};
-		assert(not (a < b));
-		assert(not (a <= b));
-		assert(not (a == b));
-		assert(not (a >= b));
-		assert(not (a > b));
-		assert(a != b);
-	});
+static auto test_less = testing::test<[] {
+	Key a("0/1"), b{"0/2"};
+	assert(a < b);
+	assert(a <= b);
+	assert(not (a == b));
+	assert(not (a >= b));
+	assert(not (a > b));
+	assert(a != b);
+	return true;
+ }>{};
 
-TEST({
-		Key a("0/1"), b{"0/2"};
-		assert(a < b);
-		assert(a <= b);
-		assert(not (a == b));
-		assert(not (a >= b));
-		assert(not (a > b));
-		assert(a != b);
-	});
-
-TEST({
-		Key a("0/2"), b("1/2"), c("0/1");
-		assert((a ^ a) == a);
-		assert((b ^ b) == b);
-		assert((c ^ c) == c);
-		assert((a ^ b) == c);
-	});
+static auto test_xor = testing::test<[]{
+	Key a("0/2"), b("1/2"), c("0/1");
+	assert((a ^ a) == a);
+	assert((b ^ b) == b);
+	assert((c ^ c) == c);
+	assert((a ^ b) == c);
+	return true;
+ }>{};

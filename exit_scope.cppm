@@ -5,7 +5,7 @@ namespace tree
 	template <class Op>
 	struct exit_scope {
 		Op op;
-		~exit_scope() {
+		constexpr ~exit_scope() {
 			op();
 		}
 	};
