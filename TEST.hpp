@@ -1,0 +1,2 @@
+#ifndef TEST
+#undef DNDEBUG
