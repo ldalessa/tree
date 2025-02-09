@@ -14,30 +14,22 @@ import std;
 export
 namespace tree
 {
-	template <class> struct SyntheticNode{};
-	template <class Value> struct ConcreteNode {
-		Value value;
-	};
-  
-	template <class Value>
-	struct TreeNode : private std::variant<SyntheticNode<Value>, ConcreteNode<Value>>
+	template <class>
+	struct tree_value_type;
+	
+	template <class ValueNode>
+	struct TreeNode
 	{
-		using cnode = ConcreteNode<Value>;
-		using snode = SyntheticNode<Value>;
-    
+		using Value = typename tree_value_type<ValueNode>::type;
+		
 		Key _key;
 		TreeNode* _parent{};
 		std::unique_ptr<TreeNode> _children[2]{};
 
+		constexpr virtual ~TreeNode() = default;
+		
 		constexpr TreeNode(Key key)
-			: TreeNode::variant::variant(snode())
-			, _key(key)
-		{
-		}
-
-		constexpr TreeNode(Key key, Value value)
-			: TreeNode::variant::variant(cnode(std::move(value)))
-			, _key(key)
+			: _key(key)
 		{
 		}
 
@@ -69,17 +61,17 @@ namespace tree
 		{
 			assert(_key <= key or best != nullptr);
 
-			if (std::holds_alternative<cnode>(*this)) {
+			if (auto p = this->_as_value_node()) {
 				best = this;
 			}
 
-			if (_children[1] < key) {
+			if (_children[1] <= key) {
 				assert(_children[0] and key < _children[0]);
 				return _children[1]->find(key, best);
 			}
 
-			if (_children[0] < key) {
-				return _children[1]->find(key, best);
+			if (_children[0] <= key) {
+				return _children[0]->find(key, best);
 			}
             
 			return find_result {
@@ -88,7 +80,7 @@ namespace tree
 			};
 		}
 
-		constexpr auto insert(Key key, Value value) -> cnode&
+		constexpr auto insert(Key key, Value value) -> ValueNode&
 		{
 			assert(_key <= key);
 			
@@ -110,8 +102,8 @@ namespace tree
 				_validate();
 			});
 			
-			auto node = std::make_unique<TreeNode>(key, std::move(value));
-			
+			auto node = std::make_unique<ValueNode>(key, std::move(value));
+			auto out = node.get();
 			if (key < _children[0]) {
 				node->_set_child(0, _take_child(0));
 			}
@@ -121,27 +113,43 @@ namespace tree
 			}
 
 			if (_children[0] == nullptr) {
-				return std::get<cnode>(*_set_child(0, std::move(node)));
+				_set_child(0, std::move(node));
+				return *out;
 			}
 
 			if (_children[1] == nullptr) {
-				return std::get<cnode>(*_set_child(1, std::move(node)));
+				_set_child(1, std::move(node));
+				return *out;
 			}
 
 			_set_child(0, std::make_unique<TreeNode>(_take_child(0), _take_child(1)));
 			_set_child(1, std::move(node));
-			return std::get<cnode>(*_children[1]);
+			return *out;
 		}
-		
-		constexpr auto set_value(Value value) -> cnode&
+
+		constexpr virtual auto set_value(Value value) -> ValueNode&
 		{
-			if (auto p = std::get_if<cnode>(this)) {
-				p->value = std::move(value);
-				return *p;
+			assert(_parent);
+			
+			auto vnode = std::make_unique<ValueNode>(_key, std::move(value));
+			vnode->_set_child(0, _take_child(0));
+			vnode->_set_child(1, _take_child(1));
+			auto out = vnode.get();
+			
+			if (_parent->_children[0].get() == this) {
+				_parent->_set_child(0, std::move(vnode));
+			}
+			else {
+				assert(_parent->_children[1].get() == this);
+				_parent->_set_child(0, std::move(vnode));
 			}
 
-			this->template emplace<cnode>(std::move(value));
-			return std::get<cnode>(*this);
+			return *out;
+		}
+
+	protected:
+		constexpr virtual auto _as_value_node() -> ValueNode* {
+			return nullptr;
 		}
 		
 	private:
@@ -193,59 +201,107 @@ namespace tree
 		constexpr auto _set_child(int n, std::unique_ptr<TreeNode> c) -> TreeNode*
 		{
 			assert(0 <= n and n < 2);
+			if (std::is_constant_evaluated() and _children[n]) {
+				_children[n]->_parent = nullptr;
+			}
+
+			if (not std::is_constant_evaluated() and options::debug and _children[n]) {
+				_children[n]->_parent = nullptr;
+			}
+
 			if ((_children[n] = std::move(c))) {
 				_children[n]->_parent = this;
 			}
+			
 			return _children[n].get();
 		}
 		
 		constexpr auto _take_child(int n) -> std::unique_ptr<TreeNode>
 		{
 			assert(0 <= n and n < 2);
-			if (_children[n]) {
+			if (std::is_constant_evaluated() and _children[n]) {
 				_children[n]->_parent = nullptr;
 			}
+
+			if (not std::is_constant_evaluated() and options::debug and _children[n]) {
+				_children[n]->_parent = nullptr;
+			}
+
 			return std::move(_children[n]);
 		}
 
-		constexpr friend auto operator<(Key a, std::unique_ptr<TreeNode> const& b)
-			-> ARROW(not b or a < b->_key);
+		constexpr friend auto operator<(Key a, std::unique_ptr<TreeNode> const& b) -> bool {
+			return not b or a < b->_key;
+		}
 
-		constexpr friend auto operator<(std::unique_ptr<TreeNode> const& a, Key b)
-			-> ARROW(a and a->_key < b);
+		constexpr friend auto operator<(std::unique_ptr<TreeNode> const& a, Key b) -> bool {
+			return a and a->_key < b;
+		}
 
-		constexpr friend auto operator<=(Key a, std::unique_ptr<TreeNode> const& b)
-			-> ARROW(not b or a <= b->_key);
+		constexpr friend auto operator<=(Key a, std::unique_ptr<TreeNode> const& b) -> bool {
+			return not b or a <= b->_key;
+		}
 
-		constexpr friend auto operator<=(std::unique_ptr<TreeNode> const& a, Key b)
-			-> ARROW(a and a->_key <= b);
+		constexpr friend auto operator<=(std::unique_ptr<TreeNode> const& a, Key b) -> bool {
+			return a and a->_key <= b;
+		}
+	};
+
+	template <class Value>
+	struct ValueNode;
+
+	template <class Value>
+	struct tree_value_type<ValueNode<Value>> {
+		using type = Value;
+	};
+	
+	template <class Value>
+	struct ValueNode : TreeNode<ValueNode<Value>>
+	{
+		Value _value;
+
+		constexpr ValueNode(Key key, Value value)
+			: ValueNode::TreeNode::TreeNode(key)
+			, _value(std::move(value))
+		{
+		}
+
+		constexpr auto set_value(Value value) -> ValueNode& override {
+			_value = std::move(value);
+			return *this;
+		}
+
+	private:
+		constexpr virtual auto _as_value_node() -> ValueNode* override final {
+			return this;
+		}
 	};
 }
 
 #undef DNDEBUG
 
 static testing::test<[] {
-	TreeNode<int> root("0/0");
+	TreeNode<ValueNode<int>> root("0/0");
 	assert(root._parent == nullptr);
 	assert(root._children[0] == nullptr);
 	assert(root._children[1] == nullptr);
 		
 	auto& a = root.insert("1/128", 0);
-	// assert(root._children[0] == &a);
+	assert(root._children[0].get() == &a);
 	assert(root._children[0]->_children[0] == nullptr);
 	assert(root._children[0]->_children[1] == nullptr);
 	assert(root._children[1] == nullptr);
-	// {
-	// 	auto const [s, t] = root.find("1/128", nullptr);
-	// 	assert(s == a);
-	// 	assert(t == a);
-	// }
+	{
+		auto const [s, t] = root.find("1/128", nullptr);
+		assert(s == &a);
+		assert(t == &a);
+	}
 		
 	auto& b = root.insert("0/128", 1);
-	// assert(root._children[0] == &b);
+	assert(root._children[0].get() == &b);
 	assert(root._children[0]->_children[0] == nullptr);
 	assert(root._children[0]->_children[1] == nullptr);
-	// assert(root._children[1] == &a);
+	assert(root._children[1].get() == &a);
 	assert(root._children[1]->_children[0] == nullptr);
 	assert(root._children[1]->_children[1] == nullptr);
 		

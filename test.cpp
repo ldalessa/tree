@@ -13,35 +13,37 @@ int main(int argc, char* argv[]) {
 	CLI11_PARSE(app, argc, argv);
 
 	options::print_options(stdout);
+
+	testing::run_all_tests();
 	
-	Key k("1/1");
+	// Key k("1/1");
 
-	std::print("{}\n", k);
+	// std::print("{}\n", k);
 
-	{
-		Key a("1/1");
-		assert((a ^ a) == a);
-	}
+	// {
+	// 	Key a("1/1");
+	// 	assert((a ^ a) == a);
+	// }
 	
-	{
-		TreeNode<int> node(k);
-		{
-			auto [a, b] = node.find(k, nullptr);
-			assert(not a);
-			assert(b and b->key() == k);
-		}
-		auto& next = node.insert("1/1", 0);
-		{
-			auto [a, b] = node.find(k, nullptr);
-			assert(a);
-			assert(a and a->key() == k);
-		}
-	}
+	// {
+	// 	TreeNode<int> node(k);
+	// 	{
+	// 		auto [a, b] = node.find(k, nullptr);
+	// 		assert(not a);
+	// 		assert(b and b->key() == k);
+	// 	}
+	// 	auto& next = node.insert("1/1", 0);
+	// 	{
+	// 		auto [a, b] = node.find(k, nullptr);
+	// 		assert(a);
+	// 		assert(a and a->key() == k);
+	// 	}
+	// }
 
-	{
-		TreeNode<int> node("0/0");
-		node.insert("0/128", 0);
-		node.insert("1/128", 1);
-		node.insert("0/127", 2);
-	}
+	// {
+	// 	TreeNode<int> node("0/0");
+	// 	node.insert("0/128", 0);
+	// 	node.insert("1/128", 1);
+	// 	node.insert("0/127", 2);
+	// }
 }
