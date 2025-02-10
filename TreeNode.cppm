@@ -96,37 +96,46 @@ namespace tree
 			if (_children[1] <= key) {
 				return _children[1]->insert(key, std::move(value));
 			}
-
-			auto const _ = exit_scope([&] {
-				_canonicalize();
-				_validate();
-			});
 			
-			auto node = std::make_unique<ValueNode>(key, std::move(value));
-			auto out = node.get();
-			if (key < _children[0]) {
-				node->_set_child(0, _take_child(0));
-			}
-
-			if (key < _children[1]) {
-				node->_set_child(1, _take_child(1));
-			}
-
-			if (_children[0] == nullptr) {
-				_set_child(0, std::move(node));
-				return *out;
-			}
-
-			if (_children[1] == nullptr) {
-				_set_child(1, std::move(node));
-				return *out;
-			}
-
-			_set_child(0, std::make_unique<TreeNode>(_take_child(0), _take_child(1)));
-			_set_child(1, std::move(node));
-			return *out;
+			return _insert(std::make_unique<ValueNode>(key, std::move(value)));
 		}
 
+		constexpr auto remove() -> std::unique_ptr<TreeNode>
+		{
+			assert(_parent);
+
+			// We're unlinking ourself so we need to remember the parent before
+			// doing that.
+			auto parent = _parent;
+
+			// Make sure that our parent is canonical after this operation.
+			auto const _ = exit_scope([] {
+				parent->_canonicalize();
+				parent->_validate();
+			});
+
+			auto id = _get_parent_id();
+			auto self = _parent->_take_child(id);
+			parent->_insert(self->_take_child(0));
+			parent->_insert(self->_take_child(1));
+			return self;
+		}
+
+		constexpr auto take_subtree() -> std::unique_ptr<TreeNode>
+		{
+			assert(_parent);
+
+			// Make sure the parent is canonical after this operation (we're
+			// unlinking ourself so capture the parent pointer to do so).
+			auto const _ = exit_scope([parent=_parent] {
+				parent->_canonicalize();
+				parent->_validate();
+			});
+
+			auto const id = _get_parent_id();
+			return _parent->_take_child(id);
+		}
+		
 		constexpr virtual auto set_value(Value value) -> ValueNode&
 		{
 			assert(_parent);
@@ -141,7 +150,7 @@ namespace tree
 			}
 			else {
 				assert(_parent->_children[1].get() == this);
-				_parent->_set_child(0, std::move(vnode));
+				_parent->_set_child(1, std::move(vnode));
 			}
 
 			return *out;
@@ -153,6 +162,13 @@ namespace tree
 		}
 		
 	private:
+		constexpr auto _get_parent_id() const -> u32 {
+			assert(_parent);
+			auto const id = _parent->_children[1].get() == this;
+			assert(_parent->_children[id].get() == this);
+			return id;
+		}
+		
 		constexpr auto _validate() const -> void
 		{
 			if (_parent) {
@@ -228,6 +244,42 @@ namespace tree
 			}
 
 			return std::move(_children[n]);
+		}
+
+		template <class Node>
+		constexpr auto _insert(std::unique_ptr<Node> node) -> Node&
+		{
+			assert(node);
+			
+			auto const _ = exit_scope([&] {
+				_canonicalize();
+				_validate();
+			});
+			
+			auto key = node->key();
+			auto out = node.get();
+			
+			if (key < _children[0]) {
+				node->_set_child(0, _take_child(0));
+			}
+
+			if (key < _children[1]) {
+				node->_set_child(1, _take_child(1));
+			}
+
+			if (_children[0] == nullptr) {
+				_set_child(0, std::move(node));
+				return *out;
+			}
+
+			if (_children[1] == nullptr) {
+				_set_child(1, std::move(node));
+				return *out;
+			}
+
+			_set_child(0, std::make_unique<TreeNode>(_take_child(0), _take_child(1)));
+			_set_child(1, std::move(node));
+			return *out;
 		}
 
 		constexpr friend auto operator<(Key a, std::unique_ptr<TreeNode> const& b) -> bool {
