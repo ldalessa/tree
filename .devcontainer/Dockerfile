@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1-labs
-FROM debian:trixie
+FROM debian:sid
 
 ARG USER_NAME
 ARG LLVM_VERSION=19
