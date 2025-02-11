@@ -19,13 +19,13 @@ namespace tree
 		constexpr Key() = default;
 
 		constexpr Key(std::same_as<u128> auto x, u32 size = 128)
-			: _data(_mask(x, size))
-			, _size(size)
+				: _data(_mask(x, size))
+				, _size(size)
 		{
 		}
 
-		constexpr Key(std::same_as<u64> auto u, std::same_as<u64> auto v, u32 size = 128) 
-			: Key(((u128)v << 64) | u, size)
+		constexpr Key(u64 u, u64 v, u32 size = 128) 
+				: Key(((u128)v << 64) | u, size)
 		{
 		}
 
@@ -34,9 +34,9 @@ namespace tree
 		{
 			auto [p, ec] = std::from_chars(i, e, _data, 16);
 			switch (ec) {
-			default: break;
-			case std::errc::invalid_argument: assert(false);
-			case std::errc::result_out_of_range: assert(false);
+			  default: break;
+			  case std::errc::invalid_argument: assert(false);
+			  case std::errc::result_out_of_range: assert(false);
 			}
 
 			if (p != e) {
@@ -44,9 +44,9 @@ namespace tree
 				i = p + 1;
 				auto [_, ec] = std::from_chars(i, e, _size);
 				switch (ec) {
-				default: break;
-				case std::errc::invalid_argument: assert(false);
-				case std::errc::result_out_of_range: assert(false);
+				  default: break;
+				  case std::errc::invalid_argument: assert(false);
+				  case std::errc::result_out_of_range: assert(false);
 				}
 			}
 			else {
@@ -59,7 +59,7 @@ namespace tree
 	
 		template <std::size_t N>
 		constexpr Key(char const (&str)[N], int base = 16)
-			: Key(std::ranges::begin(str), std::ranges::end(str), base)
+				: Key(std::ranges::begin(str), std::ranges::end(str), base)
 		{
 		}
 
@@ -98,7 +98,7 @@ namespace tree
 			return Key(a._data, n);
 		}
 
-	private:
+	  private:
 		static constexpr auto _shift_left(u128 x, u32 bits) -> u128 {
 			return bits < 128 ? x << bits : (u128)0;
 		}
@@ -137,9 +137,9 @@ struct std::formatter<Key>
 			assert(e != ctx.end());
 			auto [_, ec] = std::from_chars(i, e, _n);
 			switch (ec) {
-			case std::errc::invalid_argument: assert(false);
-			case std::errc::result_out_of_range: assert(false);
-			default: return e;
+			  case std::errc::invalid_argument: assert(false);
+			  case std::errc::result_out_of_range: assert(false);
+			  default: return e;
 			}
 		}
 		else {
@@ -168,6 +168,7 @@ struct std::formatter<Key>
 
 static auto test_equivalent = testing::test<[]{
 	Key a{}, b{};
+	assert(a <=> b == std::partial_ordering::equivalent);
 	assert(a == b);
 	assert(a <= b);
 	assert(a >= b);
@@ -178,6 +179,7 @@ static auto test_equivalent = testing::test<[]{
 
 static auto test_greater = testing::test<[]{
 	Key a("1/1"), b{};
+	assert(a <=> b == std::partial_ordering::greater);
 	assert(a > b);
 	assert(a >= b);
 	assert(a != b);
@@ -188,6 +190,7 @@ static auto test_greater = testing::test<[]{
 
 static auto test_unordered = testing::test<[]{
 	Key a("1/1"), b{"0/1"};
+	assert(a <=> b == std::partial_ordering::unordered);
 	assert(not (a < b));
 	assert(not (a <= b));
 	assert(not (a == b));
@@ -199,6 +202,7 @@ static auto test_unordered = testing::test<[]{
 
 static auto test_less = testing::test<[] {
 	Key a("0/1"), b{"0/2"};
+	assert(a <=> b == std::partial_ordering::less);
 	assert(a < b);
 	assert(a <= b);
 	assert(not (a == b));

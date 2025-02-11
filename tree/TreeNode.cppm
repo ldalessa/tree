@@ -29,13 +29,13 @@ namespace tree
 		constexpr virtual ~TreeNode() = default;
 		
 		constexpr TreeNode(Key key)
-			: _key(key)
+				: _key(key)
 		{
 		}
 
 		constexpr TreeNode(std::unique_ptr<TreeNode> a, std::unique_ptr<TreeNode> b)
-			: _key(a->_key ^ b->_key)
-			, _children{std::move(a), std::move(b)}
+				: _key(a->_key ^ b->_key)
+				, _children{std::move(a), std::move(b)}
 		{
 			assert(_children[0] and _children[1]);
 			_children[0]->_parent = this;
@@ -66,7 +66,7 @@ namespace tree
 			}
 
 			if (_children[1] <= key) {
-				assert(_children[0] and key < _children[0]);
+				assert(_children[0] and key <=> _children[0]->_key == std::partial_ordering::unordered);
 				return _children[1]->find(key, best);
 			}
 
@@ -156,12 +156,16 @@ namespace tree
 			return *out;
 		}
 
-	protected:
+		constexpr virtual auto get_value() const -> std::optional<Value> {
+			return std::nullopt;
+		}
+
+	  protected:
 		constexpr virtual auto _as_value_node() -> ValueNode* {
 			return nullptr;
 		}
 		
-	private:
+	  private:
 		constexpr auto _get_parent_id() const -> u32 {
 			assert(_parent);
 			auto const id = _parent->_children[1].get() == this;
@@ -277,6 +281,30 @@ namespace tree
 				return *out;
 			}
 
+			// Neither child is null.
+			//
+			// We need to create a dominator here, and give
+			// it two of the three nodes. Merge the two nodes that have the longest
+			// prefix match.
+			auto const a = _children[0]->_key ^ _children[1]->_key;
+			auto const b = _children[0]->_key ^ node->_key;
+			auto const c = node->_key ^ _children[1]->_key;
+
+			if (a < b) {
+				if (b < c) {
+					_set_child(1, std::make_unique<TreeNode>(std::move(node), _take_child(1)));
+					return *out;
+				}
+				_set_child(0, std::make_unique<TreeNode>(std::move(node), _take_child(0)));
+				return *out;
+			}
+
+			if (a < c) {
+				_set_child(1, std::make_unique<TreeNode>(std::move(node), _take_child(1)));
+				return *out;
+
+			}
+
 			_set_child(0, std::make_unique<TreeNode>(_take_child(0), _take_child(1)));
 			_set_child(1, std::move(node));
 			return *out;
@@ -313,8 +341,8 @@ namespace tree
 		Value _value;
 
 		constexpr ValueNode(Key key, Value value)
-			: ValueNode::TreeNode::TreeNode(key)
-			, _value(std::move(value))
+				: ValueNode::TreeNode::TreeNode(key)
+				, _value(std::move(value))
 		{
 		}
 
@@ -323,7 +351,11 @@ namespace tree
 			return *this;
 		}
 
-	private:
+		constexpr auto get_value() const -> std::optional<Value> override {
+			return _value;
+		}
+		
+	  private:
 		constexpr virtual auto _as_value_node() -> ValueNode* override final {
 			return this;
 		}
