@@ -51,7 +51,7 @@ namespace tree
 		{
 		}
 
-		constexpr auto find(Key key) -> TreeNode*
+		constexpr auto find_best(Key key) const -> TreeNode const*
 		{
 			auto const _ = std::shared_lock(_lock);
 
@@ -65,6 +65,24 @@ namespace tree
 
 			if (_key <= key) {
 				return this;
+			}
+			
+			return nullptr;
+		}
+
+		constexpr auto find(Key key) const -> ValueNode const* {
+			auto const _ = std::shared_lock(_lock);
+
+			if (_children[0] and _children[0]->_key <= key) {
+				return _children[0]->find(key) ?: _as_value_node();
+			}
+
+			if (_children[1] and _children[1]->_key <= key) {
+				return _children[1]->find(key) ?: _as_value_node();
+			}
+
+			if (_key <= key) {
+				return _as_value_node();
 			}
 			
 			return nullptr;
@@ -128,6 +146,10 @@ namespace tree
 		}
 
 	  protected:
+		constexpr virtual auto _as_value_node() const -> ValueNode const* {
+			return nullptr;
+		}
+		
 		constexpr virtual auto _as_value_node() -> ValueNode* {
 			return nullptr;
 		}
@@ -268,6 +290,10 @@ namespace tree
 		}
 		
 	  private:
+		constexpr virtual auto _as_value_node() const -> ValueNode const* override final {
+			return this;
+		}
+		
 		constexpr virtual auto _as_value_node() -> ValueNode* override final {
 			return this;
 		}
@@ -286,11 +312,19 @@ static testing::test<[] {
 	assert(root._children[0]->_children[0] == nullptr);
 	assert(root._children[0]->_children[1] == nullptr);
 	assert(root._children[1] == nullptr);
-	{
-		auto const n = root.find("1/128");
-		assert(n == a);
-	}
-		
+
+	auto const n0 = root.find_best("1/128");
+	assert(n0 == a);
+	
+	auto const n1 = root.find("1/128");
+	assert(n1 == a);
+
+	auto const n2 = root.find_best("0/128");
+	assert(n2 == &root);
+
+	auto const n3 = root.find("0/128");
+	assert(n3 == nullptr);
+	
 	auto b = root.insert("0/128", 1);
 	assert(root._children[0] == b);
 	assert(root._children[0]->_children[0] == nullptr);
