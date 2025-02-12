@@ -14,6 +14,67 @@ import std;
 export
 namespace tree
 {
+	template <class T>
+	struct atomic_ptr
+	{
+		std::atomic<T*> _ptr{};
+
+		constexpr ~atomic_ptr() {
+			delete _ptr.load();
+		}
+
+		constexpr atomic_ptr() noexcept = default;
+
+		template <class U>
+		constexpr atomic_ptr(U* ptr) noexcept : _ptr(ptr) {
+		}
+
+		constexpr atomic_ptr(atomic_ptr const&) = delete;
+		constexpr auto operator=(atomic_ptr const&) = delete;
+
+		template <class U>
+		constexpr atomic_ptr(atomic_ptr<U>&& b) noexcept : _ptr(b._ptr.exchange(nullptr)) {
+		}
+
+		template <class U>
+		constexpr auto operator=(atomic_ptr<U>&& b) noexcept -> atomic_ptr& {
+			if (&b != this) {
+				delete _ptr.exchange(b._ptr.exchange(nullptr));
+			}
+			return *this;
+		}
+
+		constexpr operator bool() const {
+			return _ptr.load() != nullptr;
+		}
+		
+		constexpr auto get() const -> T const* {
+			return _ptr.load();
+		}
+
+		constexpr auto get() -> T* {
+			return _ptr.load();
+		}
+		
+		constexpr auto operator->() const -> T const* {
+			return get();
+		}
+
+		constexpr auto operator->() -> T* {
+			return get();
+		}
+
+		constexpr auto operator==(T const* t) const -> bool {
+			return _ptr.load() == t;
+		}
+	};
+
+	template <class T, class... Args>
+	requires std::constructible_from<T, Args&&...>
+	inline constexpr auto make_atomic(Args&&... args) -> atomic_ptr<T> {
+		return atomic_ptr<T>(new T(std::forward<Args>(args)...));
+	}
+	
 	template <class>
 	struct tree_value_type;
 	
@@ -24,7 +85,7 @@ namespace tree
 		
 		Key _key;
 		TreeNode* _parent{};
-		std::unique_ptr<TreeNode> _children[2]{};
+		atomic_ptr<TreeNode> _children[2]{};
 
 		constexpr virtual ~TreeNode() = default;
 		
@@ -33,7 +94,7 @@ namespace tree
 		{
 		}
 
-		constexpr TreeNode(std::unique_ptr<TreeNode> a, std::unique_ptr<TreeNode> b)
+		constexpr TreeNode(atomic_ptr<TreeNode> a, atomic_ptr<TreeNode> b)
 				: _key(a->_key ^ b->_key)
 				, _children{std::move(a), std::move(b)}
 		{
@@ -97,10 +158,10 @@ namespace tree
 				return _children[1]->insert(key, std::move(value));
 			}
 			
-			return _insert(std::make_unique<ValueNode>(key, std::move(value)));
+			return _insert(make_atomic<ValueNode>(key, std::move(value)));
 		}
 
-		constexpr auto remove() -> std::unique_ptr<TreeNode>
+		constexpr auto remove() -> atomic_ptr<TreeNode>
 		{
 			assert(_parent);
 
@@ -121,7 +182,7 @@ namespace tree
 			return self;
 		}
 
-		constexpr auto take_subtree() -> std::unique_ptr<TreeNode>
+		constexpr auto take_subtree() -> atomic_ptr<TreeNode>
 		{
 			assert(_parent);
 
@@ -140,16 +201,16 @@ namespace tree
 		{
 			assert(_parent);
 			
-			auto vnode = std::make_unique<ValueNode>(_key, std::move(value));
+			auto vnode = make_atomic<ValueNode>(_key, std::move(value));
 			vnode->_set_child(0, _take_child(0));
 			vnode->_set_child(1, _take_child(1));
 			auto out = vnode.get();
 			
-			if (_parent->_children[0].get() == this) {
+			if (_parent->_children[0] == this) {
 				_parent->_set_child(0, std::move(vnode));
 			}
 			else {
-				assert(_parent->_children[1].get() == this);
+				assert(_parent->_children[1] == this);
 				_parent->_set_child(1, std::move(vnode));
 			}
 
@@ -168,8 +229,8 @@ namespace tree
 	  private:
 		constexpr auto _get_parent_id() const -> u32 {
 			assert(_parent);
-			auto const id = _parent->_children[1].get() == this;
-			assert(_parent->_children[id].get() == this);
+			auto const id = _parent->_children[1] == this;
+			assert(_parent->_children[id] == this);
 			return id;
 		}
 		
@@ -177,7 +238,7 @@ namespace tree
 		{
 			if (_parent) {
 				assert(_parent->_key < _key);
-				assert(_parent->_children[0].get() == this or _parent->_children[1].get() == this);
+				assert(_parent->_children[0] == this or _parent->_children[1] == this);
 			}
 
 			if (_children[1]) {
@@ -218,7 +279,7 @@ namespace tree
 			std::swap(_children[0], _children[1]);
 		}
 		
-		constexpr auto _set_child(int n, std::unique_ptr<TreeNode> c) -> TreeNode*
+		constexpr auto _set_child(int n, atomic_ptr<TreeNode> c) -> TreeNode*
 		{
 			assert(0 <= n and n < 2);
 			if (std::is_constant_evaluated() and _children[n]) {
@@ -236,7 +297,7 @@ namespace tree
 			return _children[n].get();
 		}
 		
-		constexpr auto _take_child(int n) -> std::unique_ptr<TreeNode>
+		constexpr auto _take_child(int n) -> atomic_ptr<TreeNode>
 		{
 			assert(0 <= n and n < 2);
 			if (std::is_constant_evaluated() and _children[n]) {
@@ -251,7 +312,7 @@ namespace tree
 		}
 
 		template <class Node>
-		constexpr auto _insert(std::unique_ptr<Node> node) -> Node&
+		constexpr auto _insert(atomic_ptr<Node> node) -> Node&
 		{
 			assert(node);
 			
@@ -292,37 +353,37 @@ namespace tree
 
 			if (a < b) {
 				if (b < c) {
-					_set_child(1, std::make_unique<TreeNode>(std::move(node), _take_child(1)));
+					_set_child(1, make_atomic<TreeNode>(std::move(node), _take_child(1)));
 					return *out;
 				}
-				_set_child(0, std::make_unique<TreeNode>(std::move(node), _take_child(0)));
+				_set_child(0, make_atomic<TreeNode>(std::move(node), _take_child(0)));
 				return *out;
 			}
 
 			if (a < c) {
-				_set_child(1, std::make_unique<TreeNode>(std::move(node), _take_child(1)));
+				_set_child(1, make_atomic<TreeNode>(std::move(node), _take_child(1)));
 				return *out;
 
 			}
 
-			_set_child(0, std::make_unique<TreeNode>(_take_child(0), _take_child(1)));
+			_set_child(0, make_atomic<TreeNode>(_take_child(0), _take_child(1)));
 			_set_child(1, std::move(node));
 			return *out;
 		}
 
-		constexpr friend auto operator<(Key a, std::unique_ptr<TreeNode> const& b) -> bool {
+		constexpr friend auto operator<(Key a, atomic_ptr<TreeNode> const& b) -> bool {
 			return not b or a < b->_key;
 		}
 
-		constexpr friend auto operator<(std::unique_ptr<TreeNode> const& a, Key b) -> bool {
+		constexpr friend auto operator<(atomic_ptr<TreeNode> const& a, Key b) -> bool {
 			return a and a->_key < b;
 		}
 
-		constexpr friend auto operator<=(Key a, std::unique_ptr<TreeNode> const& b) -> bool {
+		constexpr friend auto operator<=(Key a, atomic_ptr<TreeNode> const& b) -> bool {
 			return not b or a <= b->_key;
 		}
 
-		constexpr friend auto operator<=(std::unique_ptr<TreeNode> const& a, Key b) -> bool {
+		constexpr friend auto operator<=(atomic_ptr<TreeNode> const& a, Key b) -> bool {
 			return a and a->_key <= b;
 		}
 	};
@@ -371,7 +432,7 @@ static testing::test<[] {
 	assert(root._children[1] == nullptr);
 		
 	auto& a = root.insert("1/128", 0);
-	assert(root._children[0].get() == &a);
+	assert(root._children[0] == &a);
 	assert(root._children[0]->_children[0] == nullptr);
 	assert(root._children[0]->_children[1] == nullptr);
 	assert(root._children[1] == nullptr);
@@ -382,10 +443,10 @@ static testing::test<[] {
 	}
 		
 	auto& b = root.insert("0/128", 1);
-	assert(root._children[0].get() == &b);
+	assert(root._children[0] == &b);
 	assert(root._children[0]->_children[0] == nullptr);
 	assert(root._children[0]->_children[1] == nullptr);
-	assert(root._children[1].get() == &a);
+	assert(root._children[1] == &a);
 	assert(root._children[1]->_children[0] == nullptr);
 	assert(root._children[1]->_children[1] == nullptr);
 		
