@@ -286,11 +286,10 @@ static testing::test<[] {
 	assert(root._children[0]->_children[0] == nullptr);
 	assert(root._children[0]->_children[1] == nullptr);
 	assert(root._children[1] == nullptr);
-	// {
-	// 	auto const [s, t] = root.find("1/128", nullptr);
-	// 	assert(s == &a);
-	// 	assert(t == &a);
-	// }
+	{
+		auto const n = root.find("1/128");
+		assert(n == a);
+	}
 		
 	auto b = root.insert("0/128", 1);
 	assert(root._children[0] == b);
