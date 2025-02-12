@@ -9,6 +9,7 @@ add_library(tree)
 target_sources(tree
 	PUBLIC
 		FILE_SET cxx_modules TYPE CXX_MODULES FILES
+		atomic_ptr.cppm
 		exit_scope.cppm
 		options.cppm
 		testing.cppm
