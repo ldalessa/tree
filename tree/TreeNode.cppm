@@ -17,10 +17,12 @@ namespace tree
 	template <class T>
 	struct atomic_ptr
 	{
-		std::atomic<T*> _ptr{};
+		template <class> friend struct atomic_ptr;
+		
+		T* _ptr{};
 
 		constexpr ~atomic_ptr() {
-			delete _ptr.load();
+			delete _load();
 		}
 
 		constexpr atomic_ptr() noexcept = default;
@@ -33,27 +35,27 @@ namespace tree
 		constexpr auto operator=(atomic_ptr const&) = delete;
 
 		template <class U>
-		constexpr atomic_ptr(atomic_ptr<U>&& b) noexcept : _ptr(b._ptr.exchange(nullptr)) {
+		constexpr atomic_ptr(atomic_ptr<U>&& b) noexcept : _ptr(b._exchange(nullptr)) {
 		}
 
 		template <class U>
 		constexpr auto operator=(atomic_ptr<U>&& b) noexcept -> atomic_ptr& {
 			if (&b != this) {
-				delete _ptr.exchange(b._ptr.exchange(nullptr));
+				delete _exchange(b._exchange(nullptr));
 			}
 			return *this;
 		}
 
 		constexpr operator bool() const {
-			return _ptr.load() != nullptr;
+			return _load() != nullptr;
 		}
 		
 		constexpr auto get() const -> T const* {
-			return _ptr.load();
+			return _load();
 		}
 
 		constexpr auto get() -> T* {
-			return _ptr.load();
+			return _load();
 		}
 		
 		constexpr auto operator->() const -> T const* {
@@ -65,7 +67,30 @@ namespace tree
 		}
 
 		constexpr auto operator==(T const* t) const -> bool {
-			return _ptr.load() == t;
+			return _load() == t;
+		}
+
+	private:
+		constexpr auto _exchange(T* ptr) -> T* {
+			if (std::is_constant_evaluated()) {
+				return std::exchange(_ptr, ptr);
+			}
+			else {
+				return std::atomic_ref(_ptr).exchange(ptr);
+			}
+		}
+		
+		constexpr auto _load() const -> T const* {
+			return const_cast<atomic_ptr*>(this)->_load();
+		}
+
+		constexpr auto _load() -> T* {
+			if (std::is_constant_evaluated()) {
+				return _ptr;
+			}
+			else {
+				return std::atomic_ref(_ptr).load();
+			}
 		}
 	};
 
