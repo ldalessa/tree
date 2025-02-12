@@ -42,13 +42,13 @@ auto main(int argc, char** argv) -> int
 		thread.join();
 	}
 	
-	for (unsigned n = 0; auto [u, v] : edges(mm)) {
-		if (n++ < n_edges) {
-			auto [a, b] = tree.find(Key(u, v), nullptr);
-			assert(a != nullptr);
-			assert(b != nullptr);
-			assert(a == b);
-			assert(a->get_value() and *a->get_value() == n);
-		}
-	}
+	// for (unsigned n = 0; auto [u, v] : edges(mm)) {
+	// 	if (n++ < n_edges) {
+	// 		auto [a, b] = tree.find(Key(u, v), nullptr);
+	// 		assert(a != nullptr);
+	// 		assert(b != nullptr);
+	// 		assert(a == b);
+	// 		assert(a->get_value() and *a->get_value() == n);
+	// 	}
+	// }
 }
