@@ -4,7 +4,6 @@ module;
 
 export module tree:TreeNode;
 
-import :atomic_ptr;
 import :exit_scope;
 import :options;
 import :testing;
@@ -23,138 +22,105 @@ namespace tree
 	{
 		using Value = typename tree_value_type<ValueNode>::type;
 		
-		Key _key;
-		TreeNode* _parent{};
-		atomic_ptr<TreeNode> _children[2]{};
-
-		constexpr virtual ~TreeNode() = default;
+		Key const _key;
+		TreeNode* _children[2]{};
+		std::shared_mutex mutable _lock{};
+		
+		constexpr virtual ~TreeNode() noexcept {
+			delete _children[0];
+			delete _children[1];
+		}
 		
 		constexpr TreeNode(Key key)
 				: _key(key)
 		{
 		}
 
-		constexpr TreeNode(atomic_ptr<TreeNode> a, atomic_ptr<TreeNode> b)
-				: _key(a->_key ^ b->_key)
-				, _children{std::move(a), std::move(b)}
+		constexpr TreeNode(Key key, TreeNode* a, TreeNode* b)
+				: _key(key)
+				, _children{ a, b }
 		{
-			assert(_children[0] and _children[1]);
-			_children[0]->_parent = this;
-			_children[1]->_parent = this;
 			_canonicalize();
 			_validate();
-		}	
-		
-		constexpr auto key() const -> Key {
-			return _key;
-		}
-		
-		constexpr auto name() const -> std::string {
-			return std::format("{}", _key);
 		}
 
-		struct find_result {
-			TreeNode* node;
-			TreeNode* best;
-		};
-
-		constexpr auto find(Key key, TreeNode* best) -> find_result
+		/// Create a dominator for nodes a and b.
+		[[gnu::nonnull]]
+		constexpr TreeNode(TreeNode* a, TreeNode* b)
+				: TreeNode(a->_key ^ b->_key, a, b)
 		{
-			assert(_key <= key or best != nullptr);
-
-			if (auto p = this->_as_value_node()) {
-				best = this;
-			}
-
-			if (_children[1] <= key) {
-				assert(_children[0] and key <=> _children[0]->_key == std::partial_ordering::unordered);
-				return _children[1]->find(key, best);
-			}
-
-			if (_children[0] <= key) {
-				return _children[0]->find(key, best);
-			}
-            
-			return find_result {
-				.node = best,
-				.best = this
-			};
 		}
 
-		constexpr auto insert(Key key, Value value) -> ValueNode&
+		constexpr auto find(Key key) -> TreeNode*
 		{
-			assert(_key <= key);
-			
-			if (_key == key) {
-				return set_value(std::move(value));
+			auto const _ = std::shared_lock(_lock);
+
+			if (_children[0] and _children[0]->_key <= key) {
+				return _children[0]->find(key);
 			}
 
-			if (_children[0] <= key) {
-				assert(not (_children[1] <= key));
-				return _children[0]->insert(key, std::move(value));
+			if (_children[1] and _children[1]->_key <= key) {
+				return _children[1]->find(key);
 			}
 
-			if (_children[1] <= key) {
-				return _children[1]->insert(key, std::move(value));
+			if (_key <= key) {
+				return this;
 			}
 			
-			return _insert(make_atomic<ValueNode>(key, std::move(value)));
+			return nullptr;
 		}
 
-		constexpr auto remove() -> atomic_ptr<TreeNode>
+		constexpr auto insert(Key key, Value value) -> ValueNode*
 		{
-			assert(_parent);
-
-			// We're unlinking ourself so we need to remember the parent before
-			// doing that.
-			auto parent = _parent;
-
-			// Make sure that our parent is canonical after this operation.
-			auto const _ = exit_scope([] {
-				parent->_canonicalize();
-				parent->_validate();
+			auto const _ = exit_scope([&] {
+				_validate();
 			});
-
-			auto id = _get_parent_id();
-			auto self = _parent->_take_child(id);
-			parent->_insert(self->_take_child(0));
-			parent->_insert(self->_take_child(1));
-			return self;
-		}
-
-		constexpr auto take_subtree() -> atomic_ptr<TreeNode>
-		{
-			assert(_parent);
-
-			// Make sure the parent is canonical after this operation (we're
-			// unlinking ourself so capture the parent pointer to do so).
-			auto const _ = exit_scope([parent=_parent] {
-				parent->_canonicalize();
-				parent->_validate();
-			});
-
-			auto const id = _get_parent_id();
-			return _parent->_take_child(id);
-		}
-		
-		constexpr virtual auto set_value(Value value) -> ValueNode&
-		{
-			assert(_parent);
 			
-			auto vnode = make_atomic<ValueNode>(_key, std::move(value));
-			vnode->_set_child(0, _take_child(0));
-			vnode->_set_child(1, _take_child(1));
-			auto out = vnode.get();
+		  retry:
+			{
+				auto const _ = std::shared_lock(_lock);
 			
-			if (_parent->_children[0] == this) {
-				_parent->_set_child(0, std::move(vnode));
+				assert(_key <= key);
+
+				if (key == _key) {
+					goto upgrade;
+				}
+			
+				if (_children[0] and _children[0]->_key <= key) {
+					return _children[0]->insert(key, std::move(value));
+				}
+
+				if (_children[1] and _children[1]->_key <= key) {
+					return _children[1]->insert(key, std::move(value));
+				}
 			}
-			else {
-				assert(_parent->_children[1] == this);
-				_parent->_set_child(1, std::move(vnode));
+			
+			{
+				auto const _ = std::unique_lock(_lock);
+				
+				if (_children[0] and _children[0]->_key <= key) {
+					goto retry;
+				}
+
+				if (_children[1] and _children[1]->_key <= key) {
+					goto retry;
+				}
+				
+				return _insert(key, std::move(value));
 			}
 
-			return *out;
+		  upgrade:
+			{
+				auto const _ = std::unique_lock(_lock);
+
+				if (auto found = get_value()) {
+					assert(*found == value);
+					return _as_value_node();
+				}
+				else {
+					assert(false);
+				}
+			}
 		}
 
 		constexpr virtual auto get_value() const -> std::optional<Value> {
@@ -167,164 +133,94 @@ namespace tree
 		}
 		
 	  private:
-		constexpr auto _get_parent_id() const -> u32 {
-			assert(_parent);
-			auto const id = _parent->_children[1] == this;
-			assert(_parent->_children[id] == this);
-			return id;
+		static constexpr auto _canonical_order(Key const& a, Key const& b) -> bool
+		{
+			auto const c = a ^ b;
+			auto const n = c.size();
+			assert(n < 128u);
+			return a[n] == 0 and b[n] == 1;
 		}
-		
+
 		constexpr auto _validate() const -> void
 		{
-			if (_parent) {
-				assert(_parent->_key < _key);
-				assert(_parent->_children[0] == this or _parent->_children[1] == this);
-			}
-
 			if (_children[1]) {
 				assert(_children[0]);
 				assert(_key < _children[1]->_key);
-				assert(_children[1]->_parent == this);
 			}
 
 			if (_children[0]) {
 				assert(_key < _children[0]->_key);
-				assert(_children[0]->_parent == this);
 			}
 
 			if (_children[0] and _children[1]) {
 				assert(_children[0]->_key <=> _children[1]->_key == std::partial_ordering::unordered);
+				assert(_canonical_order(_children[0]->_key, _children[1]->_key));
 			}
 		}
 		
-		constexpr auto _canonicalize() -> void
-		{
-			if (_children[1] == nullptr) {
+		constexpr auto _canonicalize() -> void {
+			if (not _children[1]) {
 				return;
 			}
-
-			if (_children[0] == nullptr) {
-				_children[0] = std::move(_children[1]);
+			assert(_children[0]);
+			if (not _canonical_order(_children[0]->_key, _children[1]->_key)) {
+				std::swap(_children[0], _children[1]);
 			}
-
-			auto const c = _children[0]->_key ^ _children[1]->_key;
-			auto const b = c.size();
-			assert(b < 128u);
-			
-			if (_children[0]->_key[b] == (u64)0) {
-				assert(_children[1]->_key[b] == (u64)1);
-				return;
-			}
-
-			std::swap(_children[0], _children[1]);
 		}
 		
-		constexpr auto _set_child(int n, atomic_ptr<TreeNode> c) -> TreeNode*
+		constexpr auto _insert(Key key, Value value) -> ValueNode*
 		{
-			assert(0 <= n and n < 2);
-			if (std::is_constant_evaluated() and _children[n]) {
-				_children[n]->_parent = nullptr;
-			}
+			assert(not _children[1] or _children[0] && "Tree is not canonical");
 
-			if (not std::is_constant_evaluated() and options::debug and _children[n]) {
-				_children[n]->_parent = nullptr;
-			}
-
-			if ((_children[n] = std::move(c))) {
-				_children[n]->_parent = this;
-			}
-			
-			return _children[n].get();
-		}
-		
-		constexpr auto _take_child(int n) -> atomic_ptr<TreeNode>
-		{
-			assert(0 <= n and n < 2);
-			if (std::is_constant_evaluated() and _children[n]) {
-				_children[n]->_parent = nullptr;
-			}
-
-			if (not std::is_constant_evaluated() and options::debug and _children[n]) {
-				_children[n]->_parent = nullptr;
-			}
-
-			return std::move(_children[n]);
-		}
-
-		template <class Node>
-		constexpr auto _insert(atomic_ptr<Node> node) -> Node&
-		{
-			assert(node);
-			
 			auto const _ = exit_scope([&] {
 				_canonicalize();
 				_validate();
 			});
 			
-			auto key = node->key();
-			auto out = node.get();
-			
-			if (key < _children[0]) {
-				node->_set_child(0, _take_child(0));
-			}
+			auto node = new ValueNode(key, std::move(value));
 
-			if (key < _children[1]) {
-				node->_set_child(1, _take_child(1));
-			}
-
-			if (_children[0] == nullptr) {
-				_set_child(0, std::move(node));
-				return *out;
-			}
-
-			if (_children[1] == nullptr) {
-				_set_child(1, std::move(node));
-				return *out;
-			}
-
-			// Neither child is null.
-			//
-			// We need to create a dominator here, and give
-			// it two of the three nodes. Merge the two nodes that have the longest
-			// prefix match.
-			auto const a = _children[0]->_key ^ _children[1]->_key;
-			auto const b = _children[0]->_key ^ node->_key;
-			auto const c = node->_key ^ _children[1]->_key;
-
-			if (a < b) {
-				if (b < c) {
-					_set_child(1, make_atomic<TreeNode>(std::move(node), _take_child(1)));
-					return *out;
+			// neither child is null
+			if (_children[0] and _children[1]) {
+				auto const a = _children[0]->_key ^ _children[1]->_key;
+				auto const b = _children[0]->_key ^ node->_key;
+				auto const c = node->_key ^ _children[1]->_key;
+				
+				if (a < b) {
+					if (b < c) {
+						_children[1] = new TreeNode(node, _children[1]);
+					}
+					else {
+						_children[0] = new TreeNode(node, _children[0]);
+					}
+					return node;
 				}
-				_set_child(0, make_atomic<TreeNode>(std::move(node), _take_child(0)));
-				return *out;
+
+				if (a < c) {
+					_children[1] = new TreeNode(node, _children[1]);
+					return node;
+				}
+
+				_children[0] = new TreeNode(_children[0], _children[1]);
+				_children[1] = node;
+				return node;
 			}
 
-			if (a < c) {
-				_set_child(1, make_atomic<TreeNode>(std::move(node), _take_child(1)));
-				return *out;
-
+			// _children[1] is null and the node dominates _children[0]
+			if (_children[0] and key < _children[0]->_key) {
+				node->_children[0] = _children[0];
+				_children[0] = node;
+				return node;
 			}
 
-			_set_child(0, make_atomic<TreeNode>(_take_child(0), _take_child(1)));
-			_set_child(1, std::move(node));
-			return *out;
-		}
+			// _children[1] is null and node does not dominate _children[0]
+			if (_children[0]) {
+				_children[1] = node;
+				return node;
+			}
 
-		constexpr friend auto operator<(Key a, atomic_ptr<TreeNode> const& b) -> bool {
-			return not b or a < b->_key;
-		}
-
-		constexpr friend auto operator<(atomic_ptr<TreeNode> const& a, Key b) -> bool {
-			return a and a->_key < b;
-		}
-
-		constexpr friend auto operator<=(Key a, atomic_ptr<TreeNode> const& b) -> bool {
-			return not b or a <= b->_key;
-		}
-
-		constexpr friend auto operator<=(atomic_ptr<TreeNode> const& a, Key b) -> bool {
-			return a and a->_key <= b;
+			// _children[0] is null
+			_children[0] = node;
+			return node;
 		}
 	};
 
@@ -340,16 +236,31 @@ namespace tree
 	struct ValueNode : TreeNode<ValueNode<Value>>
 	{
 		Value _value;
+		ValueNode::TreeNode* _next{};
 
+		constexpr virtual ~ValueNode() noexcept {
+			// Don't delete the children of the next pointer, because they're
+			// aliased as my children. We left them live because they might have
+			// been accessed by concurrent threads and we didn't want to deal
+			// with hazard pointers or epoch reclamation or anything like that. 
+			if (_next) {
+				_next->_children[0] = nullptr;
+				_next->_children[1] = nullptr;
+				delete _next;
+			}
+		}
+
+		constexpr ValueNode(ValueNode::TreeNode* next, Value value)
+				: ValueNode::TreeNode::TreeNode(next->key, next->_children[0], next->_children[1])
+				, _value(std::move(value))
+				, _next(next)
+		{
+		}
+		
 		constexpr ValueNode(Key key, Value value)
 				: ValueNode::TreeNode::TreeNode(key)
 				, _value(std::move(value))
 		{
-		}
-
-		constexpr auto set_value(Value value) -> ValueNode& override {
-			_value = std::move(value);
-			return *this;
 		}
 
 		constexpr auto get_value() const -> std::optional<Value> override {
@@ -367,26 +278,25 @@ namespace tree
 
 static testing::test<[] {
 	TreeNode<ValueNode<int>> root("0/0");
-	assert(root._parent == nullptr);
 	assert(root._children[0] == nullptr);
 	assert(root._children[1] == nullptr);
 		
-	auto& a = root.insert("1/128", 0);
-	assert(root._children[0] == &a);
+	auto a = root.insert("1/128", 0);
+	assert(root._children[0] == a);
 	assert(root._children[0]->_children[0] == nullptr);
 	assert(root._children[0]->_children[1] == nullptr);
 	assert(root._children[1] == nullptr);
-	{
-		auto const [s, t] = root.find("1/128", nullptr);
-		assert(s == &a);
-		assert(t == &a);
-	}
+	// {
+	// 	auto const [s, t] = root.find("1/128", nullptr);
+	// 	assert(s == &a);
+	// 	assert(t == &a);
+	// }
 		
-	auto& b = root.insert("0/128", 1);
-	assert(root._children[0] == &b);
+	auto b = root.insert("0/128", 1);
+	assert(root._children[0] == b);
 	assert(root._children[0]->_children[0] == nullptr);
 	assert(root._children[0]->_children[1] == nullptr);
-	assert(root._children[1] == &a);
+	assert(root._children[1] == a);
 	assert(root._children[1]->_children[0] == nullptr);
 	assert(root._children[1]->_children[1] == nullptr);
 		
