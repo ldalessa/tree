@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
 
 namespace tree
@@ -19,4 +20,6 @@ namespace tree
 		using u64 = std::uint64_t;
 		using u128 = unsigned __int128;
 	}
+
+	static constexpr std::size_t CACHELINE_SIZE = 64;
 }

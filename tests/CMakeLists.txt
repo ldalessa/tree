@@ -1,3 +1,5 @@
+include(FindOpenMP)
+
 if (TREE_WITH_MMIO_TESTS)
   include(FindOpenMP)
   include(FetchContent)
@@ -12,4 +14,4 @@ if (TREE_WITH_MMIO_TESTS)
 endif  (TREE_WITH_MMIO_TESTS)
 
 add_executable(test test.cpp)
-target_link_libraries(test tree)
+target_link_libraries(test tree OpenMP::OpenMP_CXX)

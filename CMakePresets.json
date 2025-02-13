@@ -94,6 +94,17 @@
                 }
             }
         },
+				{
+            "name": "tsan",
+            "inherits": ["debug"],
+            "binaryDir": "${sourceDir}/build/tsan",
+            "cacheVariables": {
+                "CMAKE_CXX_FLAGS_DEBUG": {
+                    "type": "STRING",
+                    "value": "-O0 -g -fsanitize=thread"
+                }
+            }
+        },
         {
             "name": "asan-og",
             "inherits": ["og"],
