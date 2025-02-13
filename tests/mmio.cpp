@@ -2,11 +2,11 @@
 
 #include <CLI/App.hpp>
 #include <mmio/MatrixMarketFile.hpp>
-#include <omp.h>
 
 #include <cassert>
 #include <format>
 #include <print>
+#include <thread>
 #include <vector>
 
 using namespace tree;
@@ -16,7 +16,7 @@ auto main(int argc, char** argv) -> int
 	CLI::App app;
 	options::process_command_line(app);
 
-	int n_threads = std::max(omp_get_num_threads(), 2);
+	int n_threads = 2;
 	unsigned n_services = 1;
 	int n_edges = -1;
 	std::string path{};
@@ -32,44 +32,43 @@ auto main(int argc, char** argv) -> int
 	assert(1 <= n_services);
 	assert(-1 <= n_edges);
 
-	std::print("n_threads: {}\nn_services: {}\nn_edges: {}\n", n_threads, n_services, n_edges);
+	std::print("n_threads: {}\nn_services: {}\nn_edges: {}\n", n_threads, n_services, n_edges);	
 	
-	omp_set_num_threads(n_threads);
-	
-	mmio::MatrixMarketFile const mm(path);
+	auto const mm = mmio::MatrixMarketFile(path);
 
-	TreeNode<ValueNode<unsigned>> tree("0/0");
-	std::vector<SPSCQueue<Key, 1>> queues(n_services);
+	auto tree = TreeNode<ValueNode<unsigned>>("0/0");
+	auto queues = std::vector<SPSCQueue<Key, 1>>(n_services);
+	auto done = std::atomic_flag(false);
+	auto consumers = std::vector<std::jthread>();
 
-	std::atomic_flag done = false;
-	
-#pragma omp parallel
-	{
-		int i = omp_get_thread_num();
-
-		if (i == 0) {
-			int n_service_shift = std::countl_zero((u64)std::bit_ceil(n_services));
-			int n = 0;
-			for (auto [u, v] : edges(mm)) {
-				if (n++ != n_edges) {
-					Key key(u,v);
-					std::print("pushed: {} {} {} {}\n", i, key, u, v);
-					auto service = u >> n_service_shift;
-					while (not queues[service].push(key)) {}
-				}
-			}
-			done.test_and_set();
-		}
-		else {
+	for (int i = 0; i < n_threads - 1; ++i) {
+		consumers.emplace_back([i,&tree,&queues,&done] {
 			unsigned n = 0;
 			while (not done.test()) {
 				if (auto key = queues[i].pop()) {
-					std::print("{} popped: {}\n", i, *key);
+					// std::print("{} popped: {}\n", i, *key);
 					tree.insert(*key, n++);
 				}
-				std::print("{} queue was empty\n", i);
+				// std::print("{} queue was empty\n", i);
 			}
+		});
+	}
+	
+	int n_service_shift = std::countl_zero((u64)std::bit_ceil(n_services));
+	int n = 0;
+	for (auto [u, v] : edges(mm)) {
+		if (n++ != n_edges) {
+			Key key(u,v);
+			auto service = u >> n_service_shift;
+			while (not queues[service].push(key)) {
+			}
+			// std::print("pushed: {} {} {} to {}\n", key, u, v, service);
 		}
+	}
+	done.test_and_set();
+
+	for (auto& thread : consumers) {
+		thread.join();
 	}
 	
 	for (unsigned n = 0; auto [u, v] : edges(mm)) {

@@ -2,9 +2,8 @@
 #undef DNDEBUG
 
 #include "tree/tree.hpp"
-
 #include <CLI/App.hpp>
-#include <omp.h>
+#include <thread>
 
 using namespace tree;
 
@@ -22,50 +21,48 @@ static auto const test_queue = testing::test<[]
 
 static auto const test_queue_concurrent = testing::test<[]
  {
-	 omp_set_num_threads(2);
 	 auto queue = SPSCQueue<int, 1>();
 
-// #pragma omp parallel shared(queue)
-// 	 {
-// 		 int const i = omp_get_thread_num();
-// 		 if (i == 0) {
-// 			 auto const b = queue.push(1);
-// 			 assert(b);
-// 		 }
-// 		 else {
-// 			 while (true) {
-// 				 if (auto const i = queue.pop()) {
-// 					 assert(*i == 1);
-// 					 break;
-// 				 }
-// 			 }
-// 		 }
-// 	 }
-	 
-#pragma omp parallel shared(queue)
 	 {
-		 int const i = omp_get_thread_num();
-		 if (i == 0) {
-			 for (int n = 0; n < 10; ++n) {
-				 while (queue.push(n)) {
-					 std::print("{} waiting to push {}\n", i, n);
+		 auto producer = std::jthread([&] {
+			 auto const b = queue.push(1);
+			 assert(b);
+		 });
+
+		 auto consumer = std::jthread([&] {
+			 while (true) {
+				 if (auto const i = queue.pop()) {
+					 assert(*i == 1);
+					 break;
 				 }
-				 std::print("{} pushed {}\n", i, n);
 			 }
-		 }
-		 else {
+		 });
+	 
+		 consumer.join();
+		 producer.join();
+	 }
+
+	 {
+		 auto producer = std::jthread([&] {
+			 for (int n = 0; n < 10; ++n) {
+				 while (not queue.push(n)) {
+				 }
+			 }
+		 });
+		 
+		 auto consumer = std::jthread([&] {
 			 for (int n = 0; n < 10; ++n) {
 				 while (true) {
 					 if (auto const m = queue.pop()) {
-						 std::print("{} popped {}, expected {}\n", i, *m, n);
-						 std::fflush(stdout);
 						 assert(*m == n);
 						 break;
 					 }
-					 std::print("{} waiting to pop {}\n", i, n);
 				 }
 			 }
-		 }
+		 });
+
+		 consumer.join();
+		 producer.join();
 	 }
 
 	 return true;
