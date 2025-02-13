@@ -1,6 +1,8 @@
-#include <CLI/App.hpp>
+#define TREE_TESTING
 
-import tree;
+#include "tree/tree.hpp"
+
+#include <CLI/App.hpp>
 
 int main(int argc, char* argv[]) {
 	CLI::App app;

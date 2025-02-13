@@ -1,17 +1,16 @@
-module;
+#pragma once
 
-#include <cassert>
+#include "tree/exit_scope.hpp"
+#include "tree/options.hpp"
+#include "tree/testing.hpp"
+#include "tree/types.hpp"
+#include "tree/Key.hpp"
 
-export module tree:TreeNode;
+#include <compare>
+#include <shared_mutex>
+#include <optional>
+#include <utility>
 
-import :exit_scope;
-import :options;
-import :testing;
-import :types;
-import :Key;
-import std;
-
-export
 namespace tree
 {
 	template <class>
@@ -300,10 +299,10 @@ namespace tree
 	};
 }
 
-#undef DNDEBUG
+#ifdef TREE_TESTING
 
-static testing::test<[] {
-	TreeNode<ValueNode<int>> root("0/0");
+inline tree::testing::test<[] {
+	tree::TreeNode<tree::ValueNode<int>> root("0/0");
 	assert(root._children[0] == nullptr);
 	assert(root._children[1] == nullptr);
 		
@@ -335,3 +334,5 @@ static testing::test<[] {
 		
 	return true;
  }> test_insert;
+
+#endif

@@ -1,9 +1,11 @@
+#include "tree/tree.hpp"
+
 #include <CLI/App.hpp>
 #include <mmio/MatrixMarketFile.hpp>
-#include <cassert>
 
-import tree;
-import std;
+#include <cassert>
+#include <thread>
+#include <vector>
 
 using namespace tree;
 

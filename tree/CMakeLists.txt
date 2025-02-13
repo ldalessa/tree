@@ -5,26 +5,16 @@ FetchContent_Declare(CLI11
   GIT_TAG            main)
 FetchContent_MakeAvailable(CLI11)
 
-add_library(tree)
-target_sources(tree
-	PUBLIC
-		FILE_SET cxx_modules TYPE CXX_MODULES FILES
-		exit_scope.cppm
-		options.cppm
-		testing.cppm
-		tree.cppm
-		types.cppm
-		Key.cppm
-		TreeNode.cppm)
+add_library(tree INTERFACE
+  exit_scope.hpp
+  options.hpp
+  testing.hpp
+  tree.hpp
+  types.hpp
+  Key.hpp
+  TreeNode.hpp
+)
 
-target_compile_features(tree PUBLIC cxx_std_26)
-
-target_compile_options(tree PUBLIC
-	--include=${CMAKE_CURRENT_SOURCE_DIR}/FWD.hpp
-	--include=${CMAKE_CURRENT_SOURCE_DIR}/ARROW.hpp)
-
-if (TREE_WITH_CONSTEXPR_CHECKS)
-  target_compile_options(tree PRIVATE -DTREE_WITH_CONSTEXPR_CHECKS)
-endif (TREE_WITH_CONSTEXPR_CHECKS)
-  
-target_link_libraries(tree PUBLIC CLI11::CLI11)
+target_include_directories(tree INTERFACE $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}>)
+target_compile_features(tree INTERFACE cxx_std_26)
+target_link_libraries(tree INTERFACE CLI11::CLI11)

@@ -1,8 +1,7 @@
-export module tree:types;
+#pragma once
 
-import std;
+#include <cstdint>
 
-export
 namespace tree
 {
 	inline 

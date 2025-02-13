@@ -1,4 +1,4 @@
-export module tree:exit_scope;
+#pragma once
 
 namespace tree
 {

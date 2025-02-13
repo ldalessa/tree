@@ -1,13 +1,11 @@
-module;
+#pragma once
+
+#include "tree/types.hpp"
 
 #include <CLI/CLI.hpp>
 #include <cassert>
+#include <print>
 
-export module tree:options;
-
-import :types;
-
-export
 namespace tree::options
 {
 	inline u32 verbose = 0;

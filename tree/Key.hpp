@@ -1,14 +1,17 @@
-module;
+#pragma once
+
+#include "tree/testing.hpp"
+#include "tree/types.hpp"
 
 #include <cassert>
+#include <charconv>
+#include <compare>
+#include <concepts>
+#include <cstddef>
+#include <format>
+#include <ranges>
+#include <system_error>
 
-export module tree:Key;
-
-import :testing;
-import :types;
-import std;
-
-export
 namespace tree
 {  
 	struct Key 
@@ -122,13 +125,10 @@ namespace tree
 	};
 } // namespace tree
 
-using namespace tree;
-
-export 
 template <>
-struct std::formatter<Key>
+struct std::formatter<tree::Key>
 {
-	u32 _n{};
+	tree::u32 _n{};
 
 	constexpr auto parse(auto& ctx) -> decltype(ctx.begin()) const {
 		if (auto i = ctx.begin(); i != ctx.end() and *i != '}') {
@@ -147,27 +147,27 @@ struct std::formatter<Key>
 		}
 	}
 
-	constexpr auto format(Key a, auto& ctx) const {
+	constexpr auto format(tree::Key a, auto& ctx) const {
 		if (a._size == 0) {
 			return std::format_to(ctx.out(), "0x0/0");
 		}
 
-		u32 n = (a._size/ 4) + !!(a._size % 4);
+		tree::u32 n = (a._size/ 4) + !!(a._size % 4);
 		
 		if (_n > n) {
 			n = _n;
 		}
 
-		u32 const m = n * 4;
+		tree::u32 const m = n * 4;
 
 		return std::format_to(ctx.out(), "0x{:0{}x}/{}", a._data >> (128u - m), n, a._size);
 	}
 };
 
-#undef DNDEBUG
+#ifdef TREE_TESTING
 
-static auto test_equivalent = testing::test<[]{
-	Key a{}, b{};
+inline auto test_equivalent = tree::testing::test<[]{
+	tree::Key a{}, b{};
 	assert(a <=> b == std::partial_ordering::equivalent);
 	assert(a == b);
 	assert(a <= b);
@@ -177,8 +177,8 @@ static auto test_equivalent = testing::test<[]{
 	return true;
  }>{};
 
-static auto test_greater = testing::test<[]{
-	Key a("1/1"), b{};
+inline auto test_greater = tree::testing::test<[]{
+	tree::Key a("1/1"), b{};
 	assert(a <=> b == std::partial_ordering::greater);
 	assert(a > b);
 	assert(a >= b);
@@ -188,8 +188,8 @@ static auto test_greater = testing::test<[]{
 	return true;
  }>{};
 
-static auto test_unordered = testing::test<[]{
-	Key a("1/1"), b{"0/1"};
+inline auto test_unordered = tree::testing::test<[]{
+	tree::Key a("1/1"), b{"0/1"};
 	assert(a <=> b == std::partial_ordering::unordered);
 	assert(not (a < b));
 	assert(not (a <= b));
@@ -200,8 +200,8 @@ static auto test_unordered = testing::test<[]{
 	return true;
  }>{};
 
-static auto test_less = testing::test<[] {
-	Key a("0/1"), b{"0/2"};
+inline auto test_less = tree::testing::test<[] {
+	tree::Key a("0/1"), b{"0/2"};
 	assert(a <=> b == std::partial_ordering::less);
 	assert(a < b);
 	assert(a <= b);
@@ -212,11 +212,13 @@ static auto test_less = testing::test<[] {
 	return true;
  }>{};
 
-static auto test_xor = testing::test<[]{
-	Key a("0/2"), b("1/2"), c("0/1");
+inline auto test_xor = tree::testing::test<[]{
+	tree::Key a("0/2"), b("1/2"), c("0/1");
 	assert((a ^ a) == a);
 	assert((b ^ b) == b);
 	assert((c ^ c) == c);
 	assert((a ^ b) == c);
 	return true;
  }>{};
+
+#endif
