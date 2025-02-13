@@ -18,7 +18,7 @@ auto main(int argc, char** argv) -> int
 
 	int n_threads = 2;
 	unsigned n_services = 1;
-	int n_edges = -1;
+	unsigned n_edges = -1;
 	std::string path{};
 
 	app.add_option("path", path, "The path to the mmio file")->required();
@@ -30,9 +30,9 @@ auto main(int argc, char** argv) -> int
 	
 	assert(2 <= n_threads);
 	assert(1 <= n_services);
-	assert(-1 <= n_edges);
 
 	std::print("n_threads: {}\nn_services: {}\nn_edges: {}\n", n_threads, n_services, n_edges);	
+	std::fflush(stdout);
 	
 	auto const mm = mmio::MatrixMarketFile(path);
 
@@ -45,11 +45,12 @@ auto main(int argc, char** argv) -> int
 		consumers.emplace_back([i,&tree,&queues,&done] {
 			unsigned n = 0;
 			while (not done.test()) {
-				if (auto key = queues[i].pop()) {
-					// std::print("{} popped: {}\n", i, *key);
+				while (auto key = queues[i].pop()) {
 					tree.insert(*key, n++);
 				}
-				// std::print("{} queue was empty\n", i);
+			}
+			while (auto key = queues[i].pop()) {
+				tree.insert(*key, n++);
 			}
 		});
 	}
@@ -57,12 +58,11 @@ auto main(int argc, char** argv) -> int
 	int n_service_shift = std::countl_zero((u64)std::bit_ceil(n_services));
 	int n = 0;
 	for (auto [u, v] : edges(mm)) {
-		if (n++ != n_edges) {
+		if (n++ < n_edges) {
 			Key key(u,v);
 			auto service = u >> n_service_shift;
 			while (not queues[service].push(key)) {
 			}
-			// std::print("pushed: {} {} {} to {}\n", key, u, v, service);
 		}
 	}
 	done.test_and_set();
