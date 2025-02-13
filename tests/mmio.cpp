@@ -37,7 +37,7 @@ auto main(int argc, char** argv) -> int
 	auto const mm = mmio::MatrixMarketFile(path);
 
 	auto tree = TreeNode<ValueNode<unsigned>>("0/0");
-	auto queues = std::vector<SPSCQueue<Key, 1>>(n_services);
+	auto queues = std::vector<SPSCQueue<Key, 512>>(n_threads - 1);
 	auto done = std::atomic_flag(false);
 	auto consumers = std::vector<std::jthread>();
 
