@@ -7,6 +7,7 @@
 #include "tree/Key.hpp"
 
 #include <compare>
+#include <mutex>
 #include <shared_mutex>
 #include <optional>
 #include <utility>
@@ -256,30 +257,18 @@ namespace tree
 	template <class Value>
 	struct ValueNode : TreeNode<ValueNode<Value>>
 	{
+		using Base = TreeNode<ValueNode<Value>>;
+		
 		Value _value;
-		ValueNode::TreeNode* _next{};
 
-		constexpr virtual ~ValueNode() noexcept {
-			// Don't delete the children of the next pointer, because they're
-			// aliased as my children. We left them live because they might have
-			// been accessed by concurrent threads and we didn't want to deal
-			// with hazard pointers or epoch reclamation or anything like that. 
-			if (_next) {
-				_next->_children[0] = nullptr;
-				_next->_children[1] = nullptr;
-				delete _next;
-			}
-		}
-
-		constexpr ValueNode(ValueNode::TreeNode* next, Value value)
-				: ValueNode::TreeNode::TreeNode(next->key, next->_children[0], next->_children[1])
+		constexpr ValueNode(Base* next, Value value)
+				: Base(next->key, next->_children[0], next->_children[1])
 				, _value(std::move(value))
-				, _next(next)
 		{
 		}
 		
 		constexpr ValueNode(Key key, Value value)
-				: ValueNode::TreeNode::TreeNode(key)
+				: Base(key)
 				, _value(std::move(value))
 		{
 		}

@@ -11,13 +11,16 @@
                 }
             }
         },
-		{
+				{
             "name": "ninja",
-			"inherits": ["clang-toolchain"],
             "hidden": true,
             "cacheVariables": {
                 "type": "STRING",
-                "CMAKE_GENERATOR": "Ninja"
+                "CMAKE_GENERATOR": "Ninja",
+								"CMAKE_CXX_FLAGS": {
+										"type": "STRING",
+										"value": "-fdiagnostics-color"
+								}
             }
         },
         {
@@ -35,7 +38,7 @@
                 }
             }
         },
-	    {
+				{
             "name": "release",
             "inherits": ["ninja"],
             "binaryDir": "${sourceDir}/build/release",
@@ -113,5 +116,5 @@
                 }
             }
         }
-	]
+		]
 }
