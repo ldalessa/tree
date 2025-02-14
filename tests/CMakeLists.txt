@@ -8,7 +8,11 @@ if (TREE_WITH_MMIO_TESTS)
 
   add_executable(mmio mmio.cpp)
   target_link_libraries(mmio tree mmio::mmio)
-endif  (TREE_WITH_MMIO_TESTS)
+endif (TREE_WITH_MMIO_TESTS)
 
 add_executable(test test.cpp)
 target_link_libraries(test tree)
+
+if (TREE_WITH_CONSTEXPR_CHECKS)
+  target_compile_definitions(test PRIVATE TREE_WITH_CONSTEXPR_CHECKS)
+endif (TREE_WITH_CONSTEXPR_CHECKS)

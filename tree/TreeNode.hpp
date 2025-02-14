@@ -2,7 +2,6 @@
 
 #include "tree/exit_scope.hpp"
 #include "tree/options.hpp"
-#include "tree/testing.hpp"
 #include "tree/types.hpp"
 #include "tree/Key.hpp"
 
@@ -290,38 +289,43 @@ namespace tree
 
 #ifdef TREE_TESTING
 
-inline tree::testing::test<[] {
-	tree::TreeNode<tree::ValueNode<int>> root("0/0");
-	assert(root._children[0] == nullptr);
-	assert(root._children[1] == nullptr);
+#include "tree/testing.hpp"
+
+namespace tree::testing
+{
+	inline const auto test_insert = test<[] {
+		TreeNode<ValueNode<int>> root("0/0");
+		assert(root._children[0] == nullptr);
+		assert(root._children[1] == nullptr);
 		
-	auto a = root.insert("1/128", 0);
-	assert(root._children[0] == a);
-	assert(root._children[0]->_children[0] == nullptr);
-	assert(root._children[0]->_children[1] == nullptr);
-	assert(root._children[1] == nullptr);
+		auto a = root.insert("1/128", 0);
+		assert(root._children[0] == a);
+		assert(root._children[0]->_children[0] == nullptr);
+		assert(root._children[0]->_children[1] == nullptr);
+		assert(root._children[1] == nullptr);
 
-	auto const n0 = root.find_best("1/128");
-	assert(n0 == a);
+		auto const n0 = root.find_best("1/128");
+		assert(n0 == a);
 	
-	auto const n1 = root.find("1/128");
-	assert(n1 == a);
+		auto const n1 = root.find("1/128");
+		assert(n1 == a);
 
-	auto const n2 = root.find_best("0/128");
-	assert(n2 == &root);
+		auto const n2 = root.find_best("0/128");
+		assert(n2 == &root);
 
-	auto const n3 = root.find("0/128");
-	assert(n3 == nullptr);
+		auto const n3 = root.find("0/128");
+		assert(n3 == nullptr);
 	
-	auto b = root.insert("0/128", 1);
-	assert(root._children[0] == b);
-	assert(root._children[0]->_children[0] == nullptr);
-	assert(root._children[0]->_children[1] == nullptr);
-	assert(root._children[1] == a);
-	assert(root._children[1]->_children[0] == nullptr);
-	assert(root._children[1]->_children[1] == nullptr);
+		auto b = root.insert("0/128", 1);
+		assert(root._children[0] == b);
+		assert(root._children[0]->_children[0] == nullptr);
+		assert(root._children[0]->_children[1] == nullptr);
+		assert(root._children[1] == a);
+		assert(root._children[1]->_children[0] == nullptr);
+		assert(root._children[1]->_children[1] == nullptr);
 		
-	return true;
- }> test_insert;
+		return true;
+	}>{};
+}
 
 #endif
