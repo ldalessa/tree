@@ -19,12 +19,14 @@ auto main(int argc, char** argv) -> int
 	unsigned n_consumers = 1;
 	unsigned n_services = 1;
 	unsigned n_edges = -1;
+	bool validate = true;
 	std::string path{};
 
 	app.add_option("path", path, "The path to the mmio file")->required();
 	app.add_option("n_edges", n_edges, "The number of edges to process (default: all)");
 	app.add_option("-c, --n_consumers", n_consumers, std::format("The number of threads to use as consumers (default: {})", n_consumers));
 	app.add_option("-n, --n_services", n_services, "The number of services to provision (default: 1)");
+	app.add_flag("--validate,!--no-validate", validate, "Run the validation code (default: true)");
 	
 	CLI11_PARSE(app, argc, app.ensure_utf8(argv));
 	
@@ -72,6 +74,10 @@ auto main(int argc, char** argv) -> int
 
 	for (auto& thread : consumers) {
 		thread.join();
+	}
+
+	if (not validate) {
+		return EXIT_SUCCESS;
 	}
 	
 	for (unsigned n = 0; auto [u, v] : edges(mm)) {
