@@ -194,10 +194,11 @@ namespace tree
 
 			// neither child is null
 			if (_children[0] and _children[1]) {
+				assert(not (key < _children[0]->_key and key < _children[1]->_key));
 				auto const a = _children[0]->_key ^ _children[1]->_key;
 				auto const b = _children[0]->_key ^ node->_key;
 				auto const c = node->_key ^ _children[1]->_key;
-				
+
 				if (a < b) {
 					if (b < c) {
 						_children[1] = new TreeNode(node, _children[1]);

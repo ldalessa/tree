@@ -102,10 +102,15 @@ namespace tree
 		
 		constexpr auto _canonicalize() -> void
 		{
+			if (not _child[0]) {
+				_child[0] = std::move(_child[1]);
+				return;
+			}
+
 			if (not _child[1]) {
 				return;
 			}
-			assert(_child[0]);
+			
 			if (not less(_child[0]->_key, _child[1]->_key)) {
 				using std::swap;
 				swap(_child[0], _child[1]);
@@ -162,58 +167,68 @@ namespace tree
 			auto const _ = exit_scope([&] {
 				_canonicalize();
 				_validate();
+				if (_child[0]) {
+					_child[0]->_validate();
+				}
+				if (_child[1]) {
+					_child[1]->_validate();
+				}
 			});
 			
 			auto node = std::make_unique<GlobTreeNode>(key, std::move(glob));
 
-			// case 3: I have two children
-			if (_child[0] and _child[1]) {
-				Key const a = _child[0]->_key ^ _child[1]->_key;
-				Key const b = _child[0]->_key ^ key;
-				Key const c = key ^ _child[1]->_key;
-
-				// case 3a:
-				if (a < b and b < c) {
-					_child[1] = std::make_unique<GlobTreeNode>(std::move(node), std::move(_child[1]));
-					return;
+			// if the node dominates either or both children, then move it
+			{
+				if (_child[0] and key < _child[0]->_key) {
+					node->_child[0] = std::move(_child[0]);
 				}
 
-				// case 3b:
-				if (a < b) {
-					_child[0] = std::make_unique<GlobTreeNode>(std::move(node), std::move(_child[0]));
-					return;
+				if (_child[1] and key < _child[1]->_key) {
+					node->_child[1] = std::move(_child[1]);
 				}
 
-				// case 3c:
-				if (a < c) {
-					_child[1] = std::make_unique<GlobTreeNode>(std::move(node), std::move(_child[1]));
-					return;
-				}
-
-				// case 3d:
-				_child[0] = std::make_unique<GlobTreeNode>(std::move(_child[0]), std::move(_child[1]));
-				_child[1] = std::move(node);
-				return;
+				node->_canonicalize();
+				node->_validate();
 			}
-
-			// canonical 
-			assert(_child[1] == nullptr);
 			
-			// case 4: node dominates left child
-			if (_child[0] and key < _child[0]->_key) {
-				node->_child[0] = std::move(_child[0]);
+			// case 3: _child[0] is now null
+			if (not _child[0]) {
 				_child[0] = std::move(node);
 				return;
 			}
 
-			// case 5: node does not dominate left child
-			if (_child[0]) {
+			// case 4: _child[1] is now null
+			if (not _child[1]) {
 				_child[1] = std::move(node);
 				return;
 			}
+			
+			// case 5: I have two children
+			auto const a = (_child[0]->_key ^ _child[1]->_key).size();
+			auto const b = (_child[0]->_key ^ key).size();
+			auto const c = (key ^ _child[1]->_key).size();
+				
+			// case 5a:
+			if (a < b and b < c) {
+				_child[1] = std::make_unique<GlobTreeNode>(std::move(node), std::move(_child[1]));
+				return;
+			}
 
-			// case 6: no children
-			_child[0] = std::move(node);
+			// case 5b:
+			if (a < b) {
+				_child[0] = std::make_unique<GlobTreeNode>(std::move(node), std::move(_child[0]));
+				return;
+			}
+
+			// case 5c:
+			if (a < c) {
+				_child[1] = std::make_unique<GlobTreeNode>(std::move(node), std::move(_child[1]));
+				return;
+			}
+
+			// case 5d:
+			_child[0] = std::make_unique<GlobTreeNode>(std::move(_child[0]), std::move(_child[1]));
+			_child[1] = std::move(node);
 		}
 	};
 }
@@ -224,7 +239,7 @@ namespace tree
 
 namespace tree::testing
 {
-	inline const auto test_glob_tree_upgrade = cetest<[]
+	inline const auto test_glob_tree_upgrade = test<[]
 	{
 		auto const factor = std::exchange(tree::options::factor, 0);
 		auto const bubble = std::exchange(tree::options::bubble, 0);
