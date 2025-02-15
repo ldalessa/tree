@@ -11,6 +11,12 @@
 
 namespace tree
 {
+	struct BubbleEvent
+	{
+		Key key;
+		Glob glob;
+	};
+	
 	struct GlobTreeNode
 	{
 		Key const _key;
@@ -126,15 +132,20 @@ namespace tree
 				return true;
 			}
 
-			// For testing
-			assert(not options::factor);
 			assert(not options::bubble);
 
-			{
-				auto const& [range, fit] = _glob->split_point(options::local_fit, _key);
-				assert(range.size() < _glob->size() && "failed to split glob");
-				_insert(fit, _glob->extract(range));
+			auto [range, fit] = _glob->split_point(options::local_fit, _key);
+			assert(range.size() < _glob->size() && "failed to split glob");
+
+			// should we try to factor this glob
+			if (_key.size() < options::factor and options::factor <= fit.size()) {
+				range = _glob->factor(fit);
+				if (options::debug) {
+					assert(range.size() != _glob->size());
+				}
 			}
+
+			_insert(fit, _glob->extract(range));
 
 			// Restart the recursive insert.
 			return insert(key);

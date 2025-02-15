@@ -20,7 +20,6 @@ auto main(int argc, char** argv) -> int
 	app.add_option("n_edges", n_edges, "The number of edges to process");
 	CLI11_PARSE(app, argc, app.ensure_utf8(argv));
 
-	options::factor = 0;
 	options::bubble = 0;
 	
 	auto const mm = mmio::MatrixMarketFile(path);
@@ -29,7 +28,7 @@ auto main(int argc, char** argv) -> int
 
 	for (unsigned n = 0; auto [u, v] : edges(mm)) {
 		if (n++ < n_edges) {
-			auto const key = Key(u,v);
+			auto const key = Key(std::byteswap((u64)v),std::byteswap((u64)u));
 			tree.insert(key);
 		}
 		else {
@@ -39,7 +38,7 @@ auto main(int argc, char** argv) -> int
 	
 	for (unsigned n = 0; auto [u, v] : edges(mm)) {
 		if (n++ < n_edges) {
-			auto const key = Key(u, v);
+			auto const key = Key(std::byteswap((u64)v),std::byteswap((u64)u));
 			assert(tree.find(key));
 		}
 		else {
