@@ -154,14 +154,6 @@ namespace tree
 		}
 		
 	  private:
-		static constexpr auto _canonical_order(Key const& a, Key const& b) -> bool
-		{
-			auto const c = a ^ b;
-			auto const n = c.size();
-			assert(n < 128u);
-			return a[n] == 0 and b[n] == 1;
-		}
-
 		constexpr auto _validate() const -> void
 		{
 			if (_children[1]) {
@@ -175,7 +167,7 @@ namespace tree
 
 			if (_children[0] and _children[1]) {
 				assert(_children[0]->_key <=> _children[1]->_key == std::partial_ordering::unordered);
-				assert(_canonical_order(_children[0]->_key, _children[1]->_key));
+				assert(less(_children[0]->_key, _children[1]->_key));
 			}
 		}
 		
@@ -184,7 +176,7 @@ namespace tree
 				return;
 			}
 			assert(_children[0]);
-			if (not _canonical_order(_children[0]->_key, _children[1]->_key)) {
+			if (not less(_children[0]->_key, _children[1]->_key)) {
 				std::swap(_children[0], _children[1]);
 			}
 		}

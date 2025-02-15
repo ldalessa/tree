@@ -134,20 +134,13 @@ namespace tree
 		// 	return std::make_tuple(key, bits);
 		// }
 
-		enum FIT {
-			FIRST,
-			BEST,
-			MEDIAN
-		};
-
-		auto split_point(FIT fit, Key const& key)
+		auto split_point(Fit fit, Key const& key)
 		{
 			switch (fit) {
 			  case FIRST: return radix_split::first(_data, key, std::less<>{}, to_key);
-			  case BEST:  return radix_split::best(_data, key, std::less<>{}, to_key);
-			  case MEDIAN: throw error("median split unimplemented");
+			  case  BEST: return radix_split::best(_data, key, std::less<>{}, to_key);
+			  default: throw error("median split unimplemented");
 			}
-			std::unreachable();
 		}
 		
 	  private:

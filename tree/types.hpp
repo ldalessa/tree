@@ -3,7 +3,11 @@
 #include <charconv>
 #include <cstddef>
 #include <cstdint>
+#include <format>
 #include <ranges>
+#include <stdexcept>
+#include <string_view>
+#include <utility>
 
 namespace tree
 {
@@ -39,6 +43,27 @@ namespace tree
 		TREE_TYPES_MAKE_TYPE(std::ptrdiff_t, z)
 		
 #undef TREE_TYPES_MAKE_TYPE
+
+		enum Fit {
+			BEST = 0,
+			FIRST = 1
+		};
+
+		constexpr auto fit_to_string(Fit fit) -> std::string_view {
+			using namespace std::literals;
+			
+			switch(fit) {
+			  case BEST: return "best"sv;
+			  case FIRST: return "first"sv;
+			  default: throw std::runtime_error(std::format("[invalid Fit value, {}]", std::to_underlying(fit)));
+			}
+		}
+		
+		constexpr auto string_to_fit(std::string_view str) -> Fit {
+			if (str == fit_to_string(BEST)) return BEST;
+			if (str == fit_to_string(FIRST)) return FIRST;
+			throw std::runtime_error(std::format("[invalid Fit string, \"{}\"]", str));
+		}
 	}
 
 	static constexpr std::size_t CACHELINE_SIZE = 64;

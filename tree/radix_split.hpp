@@ -30,8 +30,9 @@ namespace tree
 		static constexpr auto best(V&& view, Key const& key, Compare&& cmp = {}, Project&& proj = {})
 			-> split_result<stdr::iterator_t<V>>
 		{
-			auto const target = stdr::size(view) / 2;
-			auto stop = [=](u32 const n) {
+			assert(stdr::size(view) != 0);
+			auto const target = std::max(stdr::size(view) / 2, 1zu);
+			auto stop = [=](auto const n) {
 				return n <= target;
 			};
 			return _split(stdr::begin(view), stdr::end(view), key, std::forward<Compare>(cmp), std::forward<Project>(proj), std::move(stop));
@@ -42,11 +43,12 @@ namespace tree
 		static constexpr auto first(V&& view, Key const& key, Compare&& cmp = {}, Project&& proj = {})
 			-> split_result<stdr::iterator_t<V>>
 		{
+			assert(stdr::size(view) != 0);
 			auto const target = stdr::size(view);
-			auto stop = [=](u32 const n) {
+			auto stop = [=](auto const n) {
 				return n < target;
 			};
-			return _split(stdr::begin(view), stdr::end(view), key, std::forward<Compare>(cmp), std::forward<Project>(proj));
+			return _split(stdr::begin(view), stdr::end(view), key, std::forward<Compare>(cmp), std::forward<Project>(proj), std::move(stop));
 		}
 	
 	  private:
@@ -54,21 +56,18 @@ namespace tree
 		static constexpr auto _split(It const i, It const j, Key const& key, auto&& cmp, auto&& proj, auto&& stop)
 			-> split_result<It>
 		{
-			static_assert(key.max_size() <= sizeof(proj(*i)) * CHAR_BIT);
+			static_assert(Key::max_size() <= sizeof(proj(*i)) * CHAR_BIT);
 			assert(i <= j);
-
-			// If we have reached the maximum then we didn't find a valid split.
-			if (key.size() == key.max_size()) {
-				return split_result(stdr::subrange(i, j), key);
-			}
 			
 			// If the current range is less than the target, then terminate recursion
 			// and return the current details.
-			u32 const n = stdr::distance(i, j);
+			auto const n = stdr::distance(i, j);
 			if (stop(n)) {
 				return split_result(stdr::subrange(i, j), key);
 			}
-
+			
+			assert(n != 0);
+			
 			if (not std::is_constant_evaluated()) {
 				count_splits += 1;
 			}
@@ -80,7 +79,7 @@ namespace tree
 			auto const r = _split(k, j, key | 1, cmp, proj, stop);
 
 			// Return whichever partition does a better job matching the target.
-			return l.size() < r.size() ? r : l;
+			return l.size() <= r.size() ? r : l;
 		}
 
 		// Get the `b`th most significant bit of a value to 1.
@@ -113,36 +112,22 @@ namespace tree
 
 namespace tree::testing
 {
-	inline const auto test_radix_split_empty = cetest<[] {
-		auto empty = std::array<u128, 0>();
-		auto const a = Key("0/0");
-		
-		auto [rng, b] = radix_split::best(empty, a);
-		assert(rng.size() == 0);
-		assert(b == a);
-		
-		return true;
-	}>{};
-
 	inline const auto test_radix_split_one = cetest<[]
 	{
 		{
 			auto data = std::array { 0_u128 };
-			auto const a = Key("0/0");
 		
-			auto [rng, b] = radix_split::best(data, a);
+			auto [rng, a] = radix_split::best(data, "0/0");
 			assert(rng.size() == 1);
-			assert(b == Key("0/128"));
+			assert(a == Key("0/0"));
 		
 			return true;
 		}
 		{
 			auto data = std::array { 1_u128 };
-			auto const a = Key("0/0");
-		
-			auto [rng, b] = radix_split::best(data, a);
+			auto [rng, b] = radix_split::best(data, "0/0");
 			assert(rng.size() == 1);
-			assert(b == Key("1/128"));
+			assert(b == Key("0/0"));
 		
 			return true;
 		}

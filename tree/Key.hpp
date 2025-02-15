@@ -67,7 +67,7 @@ namespace tree
 		{
 		}
 
-		static consteval auto max_size() -> u32 {
+		static constexpr auto max_size() -> u32 {
 			return _max_size;
 		}
 		
@@ -121,6 +121,15 @@ namespace tree
 			assert(_size < _max_size);
 			assert(bit == 0_u32 or bit == 1_u32);
 			return Key(_set(_data, _size, bit), _size + 1);
+		}
+
+		// This compares the first bit that diverges between a and b.
+		constexpr friend auto less(Key const& a, Key const& b) -> bool
+		{
+			assert(a != b);
+			auto const c = a ^ b;
+			auto const n = c.size();
+			return a[n] < b[n];
 		}
 		
 	  private:
