@@ -132,9 +132,9 @@ namespace tree
 				return true;
 			}
 			
-			if (options::bubble and options::bubble <= _key.size()) {
+			if (options::bubble <= _key.size()) {
 				auto [range, bkey] = _glob->split_point(options::global_fit, _key);
-				throw std::make_unique<GlobTreeNode>(bkey, _glob->extract(range));
+				throw GlobTreeNode(bkey, _glob->extract(range));
 			}
 
 			auto [range, fit] = _glob->split_point(options::local_fit, _key);
@@ -256,7 +256,7 @@ namespace tree::testing
 	inline const auto test_glob_tree_upgrade = test<[]
 	{
 		auto const factor = std::exchange(tree::options::factor, 0);
-		auto const bubble = std::exchange(tree::options::bubble, 0);
+		auto const bubble = std::exchange(tree::options::bubble, -1_u32);
 		auto const capacity = std::exchange(tree::options::default_glob_capacity, 2);
 
 		auto node = GlobTreeNode("0/0");

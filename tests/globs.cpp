@@ -6,6 +6,7 @@
 #include <mmio/MatrixMarketFile.hpp>
 
 #include <cassert>
+#include <print>
 
 using namespace tree;
 
@@ -20,7 +21,10 @@ auto main(int argc, char** argv) -> int
 	app.add_option("n_edges", n_edges, "The number of edges to process");
 	CLI11_PARSE(app, argc, app.ensure_utf8(argv));
 
-	options::bubble = 0;
+	if (options::bubble != -1_u32) {
+		std::print("suppressing bubbling in this test\n");
+		options::bubble = -1_u32;
+	}
 	
 	auto const mm = mmio::MatrixMarketFile(path);
 

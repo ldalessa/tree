@@ -14,7 +14,7 @@ namespace tree::options
 	inline Fit global_fit = BEST;
 	inline u64 default_glob_capacity = 256;
 	inline u32 factor = 64;
-	inline u32 bubble = 65;
+	inline u32 bubble = -1_u32;
 	inline u32 verbose = 0;
 	inline u32 debug = 0;
 
