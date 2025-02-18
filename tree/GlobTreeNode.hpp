@@ -131,8 +131,11 @@ namespace tree
 			if (_glob->insert(key)) {
 				return true;
 			}
-
-			assert(not options::bubble);
+			
+			if (options::bubble and options::bubble <= _key.size()) {
+				auto [range, bkey] = _glob->split_point(options::global_fit, _key);
+				throw std::make_unique<GlobTreeNode>(bkey, _glob->extract(range));
+			}
 
 			auto [range, fit] = _glob->split_point(options::local_fit, _key);
 			assert(range.size() < _glob->size() && "failed to split glob");
