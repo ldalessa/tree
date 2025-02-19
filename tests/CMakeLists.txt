@@ -12,6 +12,9 @@ if (TREE_WITH_MMIO_TESTS)
   
   add_executable(globs globs.cpp)
   target_link_libraries(globs tree mmio::mmio)
+
+  add_executable(bubble bubble.cpp)
+  target_link_libraries(bubble tree mmio::mmio)
 endif (TREE_WITH_MMIO_TESTS)
 
 add_executable(test test.cpp)
