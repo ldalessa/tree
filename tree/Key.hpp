@@ -79,6 +79,14 @@ namespace tree
 			return _data;
 		}
 
+		constexpr auto source() const -> u64 {
+			return _data >> 64;
+		}
+
+		constexpr auto target() const -> u64 {
+			return _data;
+		}
+		
 		constexpr auto operator[](u32 i) const -> u64 {
 			assert(i < _max_size);
 			return _get(_data, i);

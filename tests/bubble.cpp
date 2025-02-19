@@ -2,6 +2,7 @@
 #include "ingest/mmio.hpp"
 
 #include <CLI/App.hpp>
+#include <concurrentqueue.h>
 
 #include <algorithm>
 #include <bit>
@@ -13,6 +14,7 @@
 #include <vector>
 
 using namespace tree;
+namespace mc = moodycamel;
 
 namespace
 {
@@ -52,7 +54,7 @@ auto main(int argc, char** argv) -> int
 	std::fflush(stdout);
 
 	auto tlt = TopLevelTreeNode("0/0");
-	auto queues = std::vector<SPSCQueue<Key, 4096>>(n_consumers);
+	auto queues = std::vector<mc::ConcurrentQueue<Key>>(n_consumers);
 	auto done = std::atomic_flag(false);
 	auto consumers = std::vector<std::jthread>();
 	auto services = std::vector<GlobTreeNode>();
@@ -73,18 +75,19 @@ auto main(int argc, char** argv) -> int
 	for (u32 i = 0; i < n_consumers; ++i) {
 		consumers.emplace_back([&,i=i] {
 			u32 n = 0;
+			Key key;
 			while (not done.test()) {
-				while (auto key = queues[i].pop()) {
-					auto const service = tlt.find(*key)->value();
+				while (queues[i].try_dequeue(key)) {
+					auto const service = tlt.find(key)->value();
 					assert(service_to_consumer(service, n_services, n_consumers) == i);
-					assert(services[service].insert(*key));
+					assert(services[service].insert(key));
 					++n;
 				}
 			}
-			while (auto key = queues[i].pop()) {
-				auto const service = tlt.find(*key)->value();
+			while (queues[i].try_dequeue(key)) {
+				auto const service = tlt.find(key)->value();
 				assert(service_to_consumer(service, n_services, n_consumers) == i);
-				assert(services[service].insert(*key));
+				assert(services[service].insert(key));
 				++n;
 			}
 
@@ -104,8 +107,7 @@ auto main(int argc, char** argv) -> int
 				auto const service = tlt.find(key)->value();
 				auto const consumer = service_to_consumer(service, n_services, n_consumers);
 				assert(consumer < n_consumers);
-				while (not queues[consumer].push(key)) {
-				}
+				queues[consumer].enqueue(key);
 			}
 		}
 		done.test_and_set();
