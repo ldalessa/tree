@@ -32,10 +32,9 @@ namespace tree
 
 		// Construct a node with a value.
 		template <class... Ts>
-		requires (sizeof...(Ts) != 0) and std::constructible_from<Value, Ts...>
 		constexpr TopLevelTreeNode(Key key, Ts&&... ts)
-			: _key(key)
-											 , _value(std::forward<Ts>(ts)...)
+				: _key(key)
+				, _value(std::forward<Ts>(ts)...)
 		{
 		}
 

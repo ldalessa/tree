@@ -17,9 +17,8 @@ using namespace tree;
 namespace
 {
 	constexpr auto service_to_consumer(u32 i, u32 n_services, u32 n_consumers) -> u32 {
-		auto const d = n_services / n_consumers;
-		auto const r = n_services % n_consumers;
-		return i * d + std::min(i, r);
+		auto const d = n_services / n_consumers + !!(n_services % n_consumers);
+		return i / d;
 	}
 	
 	constexpr auto edge_to_key(auto const& edge) -> Key {
@@ -55,8 +54,8 @@ auto main(int argc, char** argv) -> int
 	
 	auto const mm = mmio::MatrixMarketFile(path);
 
-	auto tlt = TreeNode<ValueNode<u32>>("0/0");
-	auto queues = std::vector<SPSCQueue<Key, 512>>(n_consumers);
+	auto tlt = TopLevelTreeNode("0/0");
+	auto queues = std::vector<SPSCQueue<Key, 4096>>(n_consumers);
 	auto done = std::atomic_flag(false);
 	auto consumers = std::vector<std::jthread>();
 	auto services = std::vector<GlobTreeNode>();
@@ -70,7 +69,7 @@ auto main(int argc, char** argv) -> int
 	// Allocate top level tree nodes for each service.
 	for (u32 i = 0; i < n_services; ++i) {
 		u32 const n_bits = std::countr_zero(std::bit_ceil(n_services));
-		tlt.insert({std::rotr((u128)i, n_bits), n_bits}, i);
+		tlt.insert_or_update({std::rotr((u128)i, n_bits), n_bits}, i);
 	}
 
 	// Start the consumer threads.
@@ -82,12 +81,14 @@ auto main(int argc, char** argv) -> int
 					auto const service = tlt.find(*key)->value();
 					assert(service_to_consumer(service, n_services, n_consumers) == i);
 					assert(services[service].insert(*key));
+					++n;
 				}
 			}
 			while (auto key = queues[i].pop()) {
 				auto const service = tlt.find(*key)->value();
 				assert(service_to_consumer(service, n_services, n_consumers) == i);
 				assert(services[service].insert(*key));
+				++n;
 			}
 
 			std::print("consumer {} processed {} keys\n", i, n);
@@ -103,6 +104,7 @@ auto main(int argc, char** argv) -> int
 			auto const key = edge_to_key(edge);
 			auto const service = tlt.find(key)->value();
 			auto const consumer = service_to_consumer(service, n_services, n_consumers);
+			assert(consumer < n_consumers);
 			while (not queues[consumer].push(key)) {
 			}
 		}
@@ -122,7 +124,7 @@ auto main(int argc, char** argv) -> int
 			auto const key = edge_to_key(edge);
 			auto const node = tlt.find(key);
 			assert(node != nullptr);
-			assert(node->get_value());
+			assert(node->has_value());
 		}
 	}
 }
