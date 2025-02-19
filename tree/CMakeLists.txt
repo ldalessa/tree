@@ -11,9 +11,13 @@ add_library(tree INTERFACE
   testing.hpp
   tree.hpp
   types.hpp
+  Glob.hpp
+  GlobTreeNode.hpp
   Key.hpp
   SPSCQueue.hpp
   TreeNode.hpp
+  TreeNodeBase.hpp
+  TopLevelTreeNode.hpp
 )
 
 target_include_directories(tree INTERFACE $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}>)

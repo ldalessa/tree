@@ -23,5 +23,3 @@ target_link_libraries(test tree)
 if (TREE_WITH_CONSTEXPR_CHECKS)
   target_compile_definitions(test PRIVATE TREE_WITH_CONSTEXPR_CHECKS)
 endif (TREE_WITH_CONSTEXPR_CHECKS)
-
-
