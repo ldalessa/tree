@@ -1,0 +1,1 @@
+install(DIRECTORY die DESTINATION include)

@@ -1,18 +1,22 @@
 #undef DNDEBUG
 
 #include "tree/tree.hpp"
+#include "ingest/mmio.hpp"
 
 #include <CLI/App.hpp>
-#include <mmio/MatrixMarketFile.hpp>
 
 #include <cassert>
 #include <print>
 
 using namespace tree;
 
+static constexpr auto tuple_to_key(ingest::Tuple const& tuple) -> Key {
+	return Key(tuple.k, tuple.b);
+}
+
 auto main(int argc, char** argv) -> int
 {
-	unsigned n_edges = -1u;
+	u32 n_edges = -1_u32;
 	std::string path{};
 	
 	CLI::App app;
@@ -25,28 +29,34 @@ auto main(int argc, char** argv) -> int
 		std::print("suppressing bubbling in this test\n");
 		options::bubble = -1_u32;
 	}
-	
-	auto const mm = mmio::MatrixMarketFile(path);
 
 	auto tree = GlobTreeNode("0/0");
 
-	for (unsigned n = 0; auto [u, v] : edges(mm)) {
-		if (n++ < n_edges) {
-			auto const key = Key(std::byteswap((u64)v),std::byteswap((u64)u));
-			tree.insert(key);
-		}
-		else {
-			break;
+	{
+		auto mm = ingest::mmio::Reader(path);
+		u32 n = 0_u32;
+		while (auto tuple = mm.next()) {
+			if (n++ < n_edges) {
+				auto const key = tuple_to_key(*tuple);
+				tree.insert(key);
+			}
+			else {
+				break;
+			}
 		}
 	}
-	
-	for (unsigned n = 0; auto [u, v] : edges(mm)) {
-		if (n++ < n_edges) {
-			auto const key = Key(std::byteswap((u64)v),std::byteswap((u64)u));
-			assert(tree.find(key));
-		}
-		else {
-			break;
+
+	{
+		auto mm = ingest::mmio::Reader(path);
+		u32 n = 0_u32;
+		while (auto tuple = mm.next()) {
+			if (n++ < n_edges) {
+				auto const key = tuple_to_key(*tuple);
+				assert(tree.find(key));
+			}
+			else {
+				break;
+			}
 		}
 	}
 }

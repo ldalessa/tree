@@ -1,7 +1,7 @@
 #include "tree/tree.hpp"
+#include "ingest/mmio.hpp"
 
 #include <CLI/App.hpp>
-#include <mmio/MatrixMarketFile.hpp>
 
 #include <algorithm>
 #include <bit>
@@ -21,9 +21,8 @@ namespace
 		return i / d;
 	}
 	
-	constexpr auto edge_to_key(auto const& edge) -> Key {
-		auto const& [u, v] = edge;
-		return Key(std::byteswap((u64)u), std::byteswap((u64)v));
+	constexpr auto tuple_to_key(ingest::Tuple const& tuple) -> Key {
+		return Key(tuple.k, tuple.b);
 	}
 }
 
@@ -32,9 +31,9 @@ auto main(int argc, char** argv) -> int
 	CLI::App app;
 	options::process_command_line(app);
 
-	u32 n_consumers = 1;
-	u32 n_services = 1;
-	u32 n_edges = -1;
+	u32 n_consumers = 1_u32;
+	u32 n_services = 1_u32;
+	u32 n_edges = -1_u32;
 	bool validate = true;
 	std::string path{};
 
@@ -51,8 +50,6 @@ auto main(int argc, char** argv) -> int
 
 	std::print("n_consumers: {}\nn_services: {}\nn_edges: {}\n", n_consumers, n_services, n_edges);	
 	std::fflush(stdout);
-	
-	auto const mm = mmio::MatrixMarketFile(path);
 
 	auto tlt = TopLevelTreeNode("0/0");
 	auto queues = std::vector<SPSCQueue<Key, 4096>>(n_consumers);
@@ -96,35 +93,38 @@ auto main(int argc, char** argv) -> int
 	}
 
 	// Become the producer thread.
-	int n_consumer_shift = std::countl_zero((u64)std::bit_ceil(n_consumers)) + 1;
-	int n = 0;
-	std::print("consumer shift: {}\n", n_consumer_shift);
-	for (auto const& edge : edges(mm)) {
-		if (n++ < n_edges) {
-			auto const key = edge_to_key(edge);
-			auto const service = tlt.find(key)->value();
-			auto const consumer = service_to_consumer(service, n_services, n_consumers);
-			assert(consumer < n_consumers);
-			while (not queues[consumer].push(key)) {
+	{
+		auto mm = ingest::mmio::Reader(path);
+		int n_consumer_shift = std::countl_zero((u64)std::bit_ceil(n_consumers)) + 1;
+		u32 n = 0;
+		std::print("consumer shift: {}\n", n_consumer_shift);
+		while (auto tuple = mm.next()) {
+			if (n++ < n_edges) {
+				auto const key = tuple_to_key(*tuple);
+				auto const service = tlt.find(key)->value();
+				auto const consumer = service_to_consumer(service, n_services, n_consumers);
+				assert(consumer < n_consumers);
+				while (not queues[consumer].push(key)) {
+				}
 			}
 		}
+		done.test_and_set();
 	}
-	done.test_and_set();
 
 	for (auto& thread : consumers) {
 		thread.join();
 	}
 
-	if (not validate) {
-		return EXIT_SUCCESS;
-	}
-	
-	for (u32 n = 0; auto const& edge : edges(mm)) {
-		if (n++ < n_edges) {
-			auto const key = edge_to_key(edge);
-			auto const node = tlt.find(key);
-			assert(node != nullptr);
-			assert(node->has_value());
+	if (validate) {
+		auto mm = ingest::mmio::Reader(path);
+		u32 n = 0;
+		while ( auto tuple = mm.next()) {
+			if (n++ < n_edges) {
+				auto const key = tuple_to_key(*tuple);
+				auto const node = tlt.find(key);
+				assert(node != nullptr);
+				assert(node->has_value());
+			}
 		}
 	}
 }
