@@ -140,6 +140,10 @@ namespace tree
 			}
 		}
 
+		constexpr auto value() const -> Value {
+			return get_value().value();
+		}
+
 		constexpr virtual auto get_value() const -> std::optional<Value> {
 			return std::nullopt;
 		}
