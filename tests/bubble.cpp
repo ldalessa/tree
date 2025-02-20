@@ -34,6 +34,7 @@ auto main(int argc, char** argv) -> int
 	options::process_command_line(app);
 
 	u32 n_consumers = 1_u32;
+	u32 n_producers = 1_u32;
 	u32 n_services = 1_u32;
 	u32 n_edges = -1_u32;
 	bool validate = true;
@@ -42,6 +43,7 @@ auto main(int argc, char** argv) -> int
 	app.add_option("path", path, "The path to the mmio file")->required();
 	app.add_option("n_edges", n_edges, "The number of edges to process (default: all)");
 	app.add_option("-c, --n_consumers", n_consumers, std::format("The number of threads to use as consumers (default: {})", n_consumers));
+	app.add_option("-p, --n_producers", n_producers, std::format("The number of threads to use as producers (default: {})", n_producers));
 	app.add_option("-n, --n_services", n_services, "The number of services to provision (default: 1)");
 	app.add_flag("--validate,!--no-validate", validate, "Run the validation code (default: true)");
 	
@@ -50,12 +52,13 @@ auto main(int argc, char** argv) -> int
 	assert(1 <= n_consumers);
 	assert(1 <= n_services);
 
-	std::print("n_consumers: {}\nn_services: {}\nn_edges: {}\n", n_consumers, n_services, n_edges);	
+	std::print("n_consumers: {}\nn_producers: {}\nn_services: {}\nn_edges: {}\n", n_consumers, n_producers, n_services, n_edges);	
 	std::fflush(stdout);
 
 	auto tlt = TopLevelTreeNode("0/0");
 	auto queues = std::vector<mc::ConcurrentQueue<Key>>(n_consumers);
 	auto done = std::atomic_flag(false);
+	auto producers = std::vector<std::jthread>();
 	auto consumers = std::vector<std::jthread>();
 	auto services = std::vector<GlobTreeNode>();
 
@@ -95,24 +98,34 @@ auto main(int argc, char** argv) -> int
 		});
 	}
 
-	// Become the producer thread.
-	{
-		auto mm = ingest::mmio::Reader(path);
-		int n_consumer_shift = std::countl_zero((u64)std::bit_ceil(n_consumers)) + 1;
-		u32 n = 0;
-		std::print("consumer shift: {}\n", n_consumer_shift);
-		while (auto tuple = mm.next()) {
-			if (n++ < n_edges) {
-				auto const key = tuple_to_key(*tuple);
-				auto const service = tlt.find(key)->value();
-				auto const consumer = service_to_consumer(service, n_services, n_consumers);
-				assert(consumer < n_consumers);
-				queues[consumer].enqueue(key);
+	// Start the producer threads.
+	for (u32 i = 0; i < n_producers; ++i) {
+		producers.emplace_back([&,i=i] {
+			auto mm = ingest::mmio::Reader(path, n_producers, i);
+			int n_consumer_shift = std::countl_zero((u64)std::bit_ceil(n_consumers)) + 1;
+			u32 n = 0;
+			while (auto tuple = mm.next()) {
+				if (n++ < n_edges) {
+					auto const key = tuple_to_key(*tuple);
+					auto const service = tlt.find(key)->value();
+					auto const consumer = service_to_consumer(service, n_services, n_consumers);
+					assert(consumer < n_consumers);
+					queues[consumer].enqueue(key);
+				}
 			}
-		}
-		done.test_and_set();
+			std::print("producer {} processed {} keys\n", i, n);
+		});
 	}
 
+	// Wait for the producers to complete.
+	for (auto& thread : producers) {
+		thread.join();
+	}
+
+	// Signal the consumers.
+	done.test_and_set();
+
+	// Wait for the consumers to complete.
 	for (auto& thread : consumers) {
 		thread.join();
 	}
