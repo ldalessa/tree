@@ -55,6 +55,7 @@ auto main(int argc, char** argv) -> int
 	std::print("n_consumers: {}\nn_producers: {}\nn_services: {}\nn_edges: {}\n", n_consumers, n_producers, n_services, n_edges);	
 	std::fflush(stdout);
 
+	// auto tlt = TreeNode<u32>("0/0");
 	auto tlt = TopLevelTreeNode("0/0");
 	auto queues = std::vector<mc::ConcurrentQueue<Key>>(n_consumers);
 	auto done = std::atomic_flag(false);

@@ -47,7 +47,7 @@ auto main(int argc, char** argv) -> int
 	std::print("n_consumers: {}\nn_services: {}\nn_edges: {}\n", n_consumers, n_services, n_edges);	
 	std::fflush(stdout);
 
-	auto tree = TreeNode<ValueNode<u32>>("0/0");
+	auto tree = TreeNode<u32>("0/0");
 	auto queues = std::vector<SPSCQueue<Key, 512>>(n_consumers);
 	auto done = std::atomic_flag(false);
 	auto consumers = std::vector<std::jthread>();
@@ -57,11 +57,11 @@ auto main(int argc, char** argv) -> int
 			u32 n = 0;
 			while (not done.test()) {
 				while (auto key = queues[i].pop()) {
-					tree.insert(*key, n++);
+					tree.insert_or_update(*key, n++);
 				}
 			}
 			while (auto key = queues[i].pop()) {
-				tree.insert(*key, n++);
+				tree.insert_or_update(*key, n++);
 			}
 
 			std::print("consumer {} processed {} keys\n", i, n);
@@ -97,7 +97,7 @@ auto main(int argc, char** argv) -> int
 				auto const key = tuple_to_key(*tuple);
 				auto const node = tree.find(key);
 				assert(node != nullptr);
-				assert(node->get_value());
+				assert(node->has_value());
 			}
 		}
 	}
