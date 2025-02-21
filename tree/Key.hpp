@@ -73,6 +73,11 @@ namespace tree
 		}
 
 		[[gnu::used]]
+		constexpr auto is_max_size() const -> bool {
+			return _size == _max_size;
+		}
+		
+		[[gnu::used]]
 		constexpr auto size() const -> u32 {
 			return _size;
 		}

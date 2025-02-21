@@ -15,6 +15,10 @@ target_link_libraries(globs tree pc::ingest)
 add_executable(bubble bubble.cpp)
 target_link_libraries(bubble tree pc::ingest concurrentqueue)
 
+add_executable(camel camel.cpp)
+target_link_libraries(camel concurrentqueue)
+target_compile_features(camel PRIVATE cxx_std_20)
+
 add_executable(test test.cpp)
 target_link_libraries(test tree)
 

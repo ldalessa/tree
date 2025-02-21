@@ -67,6 +67,11 @@ namespace tree
 			}
 			
 			assert(n != 0);
+
+			if (key.is_max_size()) {
+				assert(key.data() == *i or key.data() == *std::prev(j));
+				return split_result(stdr::subrange(i, j), key);
+			}
 			
 			if (not std::is_constant_evaluated()) {
 				count_splits += 1;

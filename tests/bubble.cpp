@@ -4,8 +4,8 @@
 #include "ingest/mmio.hpp"
 
 #include <CLI/App.hpp>
-// #include <concurrentqueue.h>
-#include <blockingconcurrentqueue.h>
+#include <concurrentqueue.h>
+// #include <blockingconcurrentqueue.h>
 
 #include <algorithm>
 #include <barrier>
@@ -72,9 +72,10 @@ auto main(int argc, char** argv) -> int
 	std::fflush(stdout);
 
 	
-	// auto tlt = TreeNode<u32>("0/0");
-	auto tlt = TopLevelTreeNode("0/0");
-	auto queues = std::vector<mc::BlockingConcurrentQueue<Key>>();
+	auto tlt = TreeNode<u32>("0/0");
+	// auto tlt = TopLevelTreeNode("0/0");
+	// auto queues = std::vector<mc::BlockingConcurrentQueue<Key>>();
+	auto queues = std::vector<mc::ConcurrentQueue<Key>>();
 	auto done = std::atomic_flag(false);
 	auto threads = std::vector<std::jthread>();
 	auto services = std::vector<GlobTreeNode>();
@@ -92,9 +93,15 @@ auto main(int argc, char** argv) -> int
 	}
 
 	// Allocate top level tree nodes for each service.
+	u32 const n_bits = std::countr_zero(std::bit_ceil(n_services));
 	for (u32 i = 0; i < n_services; ++i) {
-		u32 const n_bits = std::countr_zero(std::bit_ceil(n_services));
-		tlt.insert_or_update({std::rotr((u128)i, n_bits), n_bits}, i);
+		auto const j = u128(i);
+		auto const key = Key(std::rotr(j, n_bits), n_bits);
+		if (options::verbose) {
+			std::print("inserting tlt entry {}->{}\n", key, i);
+		}
+		tlt.insert_or_update(key, i);
+		require(tlt.find(key)->value() == i);
 	}
 	
 	auto consumer_barrier = std::barrier(n_consumers + 1);
@@ -174,9 +181,12 @@ auto main(int argc, char** argv) -> int
 				auto const service = tlt.find(key)->value();
 				auto const consumer = service_to_consumer(service, n_services, n_consumers);
 				require(consumer < n_consumers);
-				while (not queues[consumer].try_enqueue(tokens[consumer], key)) {
+				while (not queues[consumer].try_enqueue(//tokens[consumer],
+														key)) {
 					stalls += 1;
-					if (stalls & 1<<16) std::print("producer {} stalling on {}\n", i, consumer);
+					if (options::verbose and (stalls % (1<<16)) == 0) {
+						std::print("producer {} stalling on {}\n", i, consumer);
+					}
 				}
 				n += 1;
 			}
