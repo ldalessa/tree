@@ -6,9 +6,9 @@
 #include <cstdio>
 #include <cstdint>
 #include <cstring>
-#include <filesystem>
 #include <format>
 #include <optional>
+#include <string_view>
 #include <tuple>
 
 namespace ingest
@@ -44,15 +44,15 @@ namespace ingest
         long n_total;                     //!< the number of total bytes to read
         long n_read{};                    //!< the number of bytes we have read
         char _line[512]{};                //!< the fgets buffer
-        std::filesystem::path const _path{}; //!< the file path for debugging output
+		std::string_view _path{}; //!< the file path for debugging output
 
-		FileReader(FILE* input, std::uint32_t const n_ranks, std::uint32_t const rank, std::filesystem::path const path, long const n_bytes)
+		FileReader(FILE* input, std::uint32_t const n_ranks, std::uint32_t const rank, std::string_view path, long const n_bytes)
 				: _input(input)
 				, _path(path)
 		{
 			assert(rank < n_ranks);
             if (_input == nullptr) {
-                throw _error("failed to open input file {}\n", _path.c_str());
+                throw _error("failed to open input file {}\n", _path);
             }
 
 			long offset;
@@ -68,7 +68,7 @@ namespace ingest
             }
 
             if (std::fseek(_input, offset, SEEK_CUR) != 0) {
-                throw _error("failed fseek on {} to offset {}\n", _path.c_str(), offset);
+                throw _error("failed fseek on {} to offset {}\n", _path, offset);
             }
 
             // Non-rank-zero partitions advance to the start of the next line.
@@ -85,8 +85,8 @@ namespace ingest
         /// @param n_ranks The number of ranks to partition across.
         /// @param rank The id of the current rank.
         /// @param path The file path for debugging purposes.
-        FileReader(FILE* input, std::uint32_t const n_ranks = 1, std::uint32_t const rank = 0, std::filesystem::path const path = {})
-                : FileReader(input, n_ranks, rank, path, _get_file_bytes(input, path.c_str()))
+        FileReader(FILE* input, std::uint32_t const n_ranks = 1, std::uint32_t const rank = 0, std::string_view path = {})
+                : FileReader(input, n_ranks, rank, path, _get_file_bytes(input, path))
         {
 		}
 		
@@ -98,8 +98,8 @@ namespace ingest
         /// @param path The file path.
         /// @param n_ranks The number of ranks to partition across.
         /// @param rank The id of the current rank.
-        FileReader(std::filesystem::path const path, std::uint32_t const n_ranks = 1, std::uint32_t const rank = 0)
-                : FileReader(std::fopen(path.c_str(), "r"), n_ranks, rank, path)
+        FileReader(std::string_view path, std::uint32_t const n_ranks = 1, std::uint32_t const rank = 0)
+                : FileReader(std::fopen(path.data(), "r"), n_ranks, rank, path)
         {
         }
 
@@ -193,14 +193,14 @@ namespace ingest
                 if (std::feof(_input)) {
                     return false;
                 }
-                throw _error("could not read from {}\n", _path.c_str());
+                throw _error("could not read from {}\n", _path);
             }
 
             // Hate this strlen, I wish gets or our parser would return the
             // number of strings.
             auto const read = strnlen(_line, sizeof(_line));
             if (read == sizeof(_line)) {
-                throw _error("file line exceeded temporary buffer length {} file {}\n", sizeof(_line), _path.c_str());
+                throw _error("file line exceeded temporary buffer length {} file {}\n", sizeof(_line), _path);
             }
             n_read += read;
             return true;
@@ -209,7 +209,7 @@ namespace ingest
 		/// Figure out how many bytes in the file.
 		///
 		/// This will reset the input file pointer to the beginning of the file.
-		static auto _get_file_bytes(FILE* input, char const* const path) -> long
+		static auto _get_file_bytes(FILE* input, std::string_view path) -> long
 		{
 			assert(input);
             if (std::fseek(input, 0, SEEK_END) != 0) {

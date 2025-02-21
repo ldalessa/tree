@@ -5,7 +5,6 @@
 
 #include <cstdint>
 #include <optional>
-#include <filesystem>
 #include <utility>
 
 namespace ingest::mmio
@@ -21,12 +20,12 @@ namespace ingest::mmio
 		int _m;
 		int _nnz;
 		
-		Reader(std::filesystem::path path, std::uint32_t const n_ranks = 1, std::uint32_t const rank = 0)
-				: Reader(_open_mmio_file(path.c_str()), n_ranks, rank, std::move(path))
+		Reader(std::string_view path, std::uint32_t const n_ranks = 1, std::uint32_t const rank = 0)
+				: Reader(_open_mmio_file(path), n_ranks, rank, std::move(path))
 		{
 		}
 
-		Reader(FILE* file, std::uint32_t const n_ranks, std::uint32_t const rank, std::filesystem::path path)
+		Reader(FILE* file, std::uint32_t const n_ranks, std::uint32_t const rank, std::string_view path)
 				: Reader(file, n_ranks, rank, std::move(path), _process_mmio_header(file, path))
 		{
 		}
@@ -36,7 +35,7 @@ namespace ingest::mmio
 		}
 
 	  private:		
-		static auto _open_mmio_file(std::filesystem::path const& path) -> FILE*;
+		static auto _open_mmio_file(std::string_view path) -> FILE*;
 
 		struct _mmio_header_data {
 			long bytes;
@@ -45,9 +44,9 @@ namespace ingest::mmio
 			int nnz;
 		};
 		
-		static auto _process_mmio_header(FILE* file, std::filesystem::path const& path) -> _mmio_header_data;
+		static auto _process_mmio_header(FILE* file, std::string_view path) -> _mmio_header_data;
 
-		Reader(FILE* file, std::uint32_t const n_ranks, std::uint32_t const rank, std::filesystem::path path, _mmio_header_data mmio)
+		Reader(FILE* file, std::uint32_t const n_ranks, std::uint32_t const rank, std::string_view path, _mmio_header_data mmio)
 				: FileReader(file, n_ranks, rank, std::move(path), mmio.bytes)
 				, _n(mmio.n)
 				, _m(mmio.m)

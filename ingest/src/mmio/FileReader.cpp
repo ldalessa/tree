@@ -8,25 +8,25 @@ extern "C" {
 #include <unistd.h>
 
 auto
-ingest::mmio::Reader::_open_mmio_file(std::filesystem::path const& path)
+ingest::mmio::Reader::_open_mmio_file(std::string_view path)
 	-> FILE*
 {
-	int const fd = open(path.c_str(), O_RDONLY);
+	int const fd = open(path.data(), O_RDONLY);
 	if (fd < 0) {
-		throw _error("open failed on {}, {}: {}\n", path.c_str(), errno, strerror(errno));
+		throw _error("open failed on {}, {}: {}\n", path, errno, strerror(errno));
 	}
 
 	FILE* f = fdopen(fd, "r");
 	if (f == nullptr) {
 		close(fd);
-		throw _error("fdopen failed on {}, {}: {}\n", path.c_str(), errno, strerror(errno));
+		throw _error("fdopen failed on {}, {}: {}\n", path, errno, strerror(errno));
 	}
 
 	return f;
 }
 
 auto
-ingest::mmio::Reader::_process_mmio_header(FILE* f, std::filesystem::path const& path)
+ingest::mmio::Reader::_process_mmio_header(FILE* f, std::string_view path)
 	-> _mmio_header_data
 {
 	_mmio_header_data out{};
@@ -37,7 +37,7 @@ ingest::mmio::Reader::_process_mmio_header(FILE* f, std::filesystem::path const&
 	  case MM_NO_HEADER:        // if the file does not begin with "%%MatrixMarket".
 	  case MM_UNSUPPORTED_TYPE: // if not recongizable description.
 		fclose(f);
-		throw _error("could not parse {} as an mmio file", path.c_str());
+		throw _error("could not parse {} as an mmio file", path);
 	}
 
 	if (!mm_is_coordinate(type)) {
@@ -48,7 +48,7 @@ ingest::mmio::Reader::_process_mmio_header(FILE* f, std::filesystem::path const&
 	switch (mm_read_mtx_crd_size(f, &out.n, &out.m, &out.nnz)) {
 	  case MM_PREMATURE_EOF:    // if an end-of-file is encountered before processing these three values.
 		fclose(f);
-		throw _error("mmio file {} missing data", path.c_str());
+		throw _error("mmio file {} missing data", path);
 	}
 
 	auto const i = ftell(f);
