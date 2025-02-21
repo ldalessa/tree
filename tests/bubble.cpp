@@ -4,7 +4,8 @@
 #include "ingest/mmio.hpp"
 
 #include <CLI/App.hpp>
-#include <concurrentqueue.h>
+// #include <concurrentqueue.h>
+#include <blockingconcurrentqueue.h>
 
 #include <algorithm>
 #include <barrier>
@@ -37,6 +38,7 @@ auto main(int argc, char** argv) -> int
 	u32 n_producers = 1_u32;
 	u32 n_services = 1_u32;
 	u64 n_edges = -1_u64;
+	u32 queue_size = 512_u32;
 	bool validate = true;
 	std::string path{};
 
@@ -44,6 +46,7 @@ auto main(int argc, char** argv) -> int
 	app.add_option("n_edges", n_edges, "The number of edges to process (default: all)");
 	app.add_option("-c, --n_consumers", n_consumers, std::format("The number of threads to use as consumers (default: {})", n_consumers));
 	app.add_option("-p, --n_producers", n_producers, std::format("The number of threads to use as producers (default: {})", n_producers));
+	app.add_option("-q, --queue_size", queue_size, std::format("The consumer queue size (default: {})", queue_size));
 	app.add_option("-n, --n_services", n_services, "The number of services to provision (default: 1)");
 	app.add_flag("--validate,!--no-validate", validate, "Run the validation code (default: true)");
 	
@@ -55,17 +58,33 @@ auto main(int argc, char** argv) -> int
 
 	auto const n_edges_per_producer = n_edges / n_producers;
 
-	std::print("n_consumers: {}\nn_producers: {}\nn_services: {}\nn_edges: {}\nn_edges_per_producer : {}\n", n_consumers, n_producers, n_services, n_edges, n_edges_per_producer);
+	options::print_options(stdout);
+
+	std::print("\n");
+	std::print("         n_consumers: {}\n", n_consumers);
+	std::print("         n_producers: {}\n", n_producers);
+	std::print("          n_services: {}\n", n_services);
+	std::print("             n_edges: {}\n", n_edges);
+	std::print("n_edges_per_producer: {}\n", n_edges_per_producer);
+	std::print("          queue_size: {}\n", queue_size);
+	std::print("            validate: {}\n", validate);
+	std::print("\n");
 	std::fflush(stdout);
 
 	
 	// auto tlt = TreeNode<u32>("0/0");
 	auto tlt = TopLevelTreeNode("0/0");
-	auto queues = std::vector<mc::ConcurrentQueue<Key>>(n_consumers);
+	auto queues = std::vector<mc::BlockingConcurrentQueue<Key>>();
 	auto done = std::atomic_flag(false);
 	auto threads = std::vector<std::jthread>();
 	auto services = std::vector<GlobTreeNode>();
 
+	// Allocate the queues.
+	queues.reserve(n_consumers);
+	for (u32 i = 0; i < n_consumers; ++i) {
+		queues.emplace_back(queue_size, n_producers, 0);
+	}
+	
 	// Allocate local trees for each service.
 	services.reserve(n_services);
 	for (u32 i = 0; i < n_services; ++i) {
@@ -79,14 +98,19 @@ auto main(int argc, char** argv) -> int
 	}
 	
 	auto consumer_barrier = std::barrier(n_consumers + 1);
+
+	std::mutex token_mutex;
 	
 	// Start the consumer threads.
 	for (u32 i = 0; i < n_consumers; ++i) {
 		threads.emplace_back([&,i=i]
 		{
 			std::print("starting consumer {}\n", i);
-			
-			auto token = mc::ConsumerToken(queues[i]);
+
+			auto token = [&] {
+				auto const _ = std::unique_lock(token_mutex);
+				return mc::ConsumerToken(queues[i]);
+			}();
 
 			consumer_barrier.arrive_and_wait();
 			
@@ -127,8 +151,9 @@ auto main(int argc, char** argv) -> int
 			
 			// Allocate a token for each of the queues.
 			std::vector<mc::ProducerToken> tokens;
-			tokens.reserve(n_consumers);
+			tokens.reserve(queues.size());
 			for (auto& q : queues) {
+				auto const _ = std::unique_lock(token_mutex);
 				tokens.emplace_back(q);
 			}
 
@@ -151,6 +176,7 @@ auto main(int argc, char** argv) -> int
 				require(consumer < n_consumers);
 				while (not queues[consumer].try_enqueue(tokens[consumer], key)) {
 					stalls += 1;
+					if (stalls & 1<<16) std::print("producer {} stalling on {}\n", i, consumer);
 				}
 				n += 1;
 			}
@@ -171,13 +197,13 @@ auto main(int argc, char** argv) -> int
 	consumer_barrier.arrive_and_wait();
 	auto const end_time = std::chrono::steady_clock::now();
 
-	std::print("time: {}\n", end_time - start_time);
-	
 	// Join all of our threads.
 	for (auto& thread : threads) {
 		thread.join();
 	}
 
+	std::print("time: {}\n", end_time - start_time);
+	
 	if (validate) {
 		u64 m = 0;
 		for (u32 i = 0; i < n_producers; ++i) {

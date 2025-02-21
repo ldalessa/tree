@@ -11,5 +11,4 @@
 #include "tree/Key.hpp"
 #include "tree/SPSCQueue.hpp"
 #include "tree/TreeNode.hpp"
-#include "tree/TreeNodeBase.hpp"
 #include "tree/TopLevelTreeNode.hpp"
