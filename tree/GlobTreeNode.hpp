@@ -44,7 +44,7 @@ namespace tree
 		
 		constexpr auto find(Key const& key, Glob const* best = nullptr) const -> bool
 		{
-			assert(key.size() == 128_u128);
+			assert(key.size() == 128_u32);
 			assert(_key <= key);
 
 			if (_glob.has_value()) {
@@ -59,7 +59,7 @@ namespace tree
 				return _child[0]->find(key, best);
 			}
 
-			return best ? best->contains(key.data()) : false; 
+			return best ? best->contains(key) : false; 
 		}
 
 		constexpr auto insert(Key const& key, GlobTreeNode* best = nullptr) -> bool

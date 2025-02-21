@@ -162,13 +162,17 @@ auto main(int argc, char** argv) -> int
 		auto mm = ingest::mmio::Reader(path);
 		u64 n = 0;
 		while ( auto tuple = mm.next()) {
-			if (n++ < n_edges) {
-				auto const key = tuple_to_key(*tuple);
-				auto const node = tlt.find(key);
-				require(node != nullptr);
-				require(node->has_value());
-				require(node->key() == key);
-			}
+			if (n == n_edges) break;
+
+			auto const key = tuple_to_key(*tuple);
+			auto const node = tlt.find(key);
+			require(node != nullptr);
+			require(node->has_value());
+
+			auto const service = node->value();
+			require(services[service].find(key));
+
+			n += 1;
 		}
 		std::print("validated {} tuples\n", n);
 	}
