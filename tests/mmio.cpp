@@ -61,7 +61,7 @@ auto main(int argc, char** argv) -> int
 				while (auto key = queues[i].pop()) {
 					tree.insert_or_update(*key, n++);
 				}
-				stalls == 1;
+				stalls += 1;
 			}
 			while (auto key = queues[i].pop()) {
 				tree.insert_or_update(*key, n++);
