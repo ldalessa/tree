@@ -1,11 +1,10 @@
-#undef DNDEBUG
-
+#include "require.hpp"
 #include "tree/tree.hpp"
 #include "ingest/mmio.hpp"
 
 #include <CLI/App.hpp>
 
-#include <cassert>
+#include <bit>
 #include <format>
 #include <print>
 #include <thread>
@@ -29,7 +28,7 @@ auto main(int argc, char** argv) -> int
 
 	u32 n_consumers = 1;
 	u32 n_services = 1;
-	u32 n_edges = -1;
+	u64 n_edges = -1;
 	bool validate = true;
 	std::string path{};
 
@@ -41,8 +40,8 @@ auto main(int argc, char** argv) -> int
 	
 	CLI11_PARSE(app, argc, app.ensure_utf8(argv));
 	
-	assert(1 <= n_consumers);
-	assert(1 <= n_services);
+	require(1 <= n_consumers);
+	require(1 <= n_services);
 
 	std::print("n_consumers: {}\nn_services: {}\nn_edges: {}\n", n_consumers, n_services, n_edges);	
 	std::fflush(stdout);
@@ -53,34 +52,39 @@ auto main(int argc, char** argv) -> int
 	auto consumers = std::vector<std::jthread>();
 
 	for (int i = 0; i < n_consumers; ++i) {
-		consumers.emplace_back([i,&tree,&queues,&done] {
-			u32 n = 0;
+		consumers.emplace_back([i,&tree,&queues,&done]
+		{
+			u64 n = 0;
+			u64 stalls = 0;
+			
 			while (not done.test()) {
 				while (auto key = queues[i].pop()) {
 					tree.insert_or_update(*key, n++);
 				}
+				stalls == 1;
 			}
 			while (auto key = queues[i].pop()) {
 				tree.insert_or_update(*key, n++);
 			}
 
-			std::print("consumer {} processed {} keys\n", i, n);
+			std::print("consumer {} processed {} keys ({} stalls)\n", i, n, stalls);
 		});
 	}
 
-
 	{
 		auto mm = ingest::mmio::Reader(path);
-		int n_consumer_shift = std::countl_zero((u64)std::bit_ceil(n_consumers)) + 1;
-		int n = 0;
-		std::print("consumer shift: {}\n", n_consumer_shift);
+		int n_bits = std::countr_zero((u64)std::bit_ceil(n_consumers));
+		u64 n = 0;
+
 		while (auto tuple = mm.next()) {
-			if (n++ < n_edges) {
-				auto const key = tuple_to_key(*tuple);
-				auto const service = std::min((n_consumer_shift < 64) ? key.source() >> n_consumer_shift : 0, (u64)n_consumers - 1);
-				while (not queues[service].push(key)) {
-				}
+			if (n == n_edges) break;
+			
+			auto const key = tuple_to_key(*tuple);
+			auto const service = std::rotl(key.data(), n_bits);
+			auto const consumer = service_to_consumer(service, n_services, n_consumers);
+			while (not queues[consumer].push(key)) {
 			}
+			n += 1;
 		}
 		done.test_and_set();
 	}
@@ -96,8 +100,9 @@ auto main(int argc, char** argv) -> int
 			if (n++ < n_edges) {
 				auto const key = tuple_to_key(*tuple);
 				auto const node = tree.find(key);
-				assert(node != nullptr);
-				assert(node->has_value());
+				require(node != nullptr);
+				require(node->has_value());
+				require(node->key() == key);
 			}
 		}
 	}
