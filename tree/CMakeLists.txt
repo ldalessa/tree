@@ -16,7 +16,6 @@ add_library(tree INTERFACE
   Key.hpp
   SPSCQueue.hpp
   TreeNode.hpp
-  TreeNodeBase.hpp
   TopLevelTreeNode.hpp
 )
 
