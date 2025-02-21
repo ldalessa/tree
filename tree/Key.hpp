@@ -26,6 +26,7 @@ namespace tree
 				: _data(_mask(x, size))
 				, _size(size)
 		{
+			assert(_data == _mask(_data, _size));
 		}
 
 		constexpr Key(u64 u, u64 v, u32 size = _max_size) 
@@ -70,23 +71,35 @@ namespace tree
 		static constexpr auto max_size() -> u32 {
 			return _max_size;
 		}
-		
+
+		[[gnu::used]]
 		constexpr auto size() const -> u32 {
 			return _size;
 		}
 
+		[[gnu::used]]
 		constexpr auto data() const -> u128 {
 			return _data;
 		}
 
+		[[gnu::used]]
 		constexpr auto source() const -> u64 {
 			return _data >> 64;
 		}
 
+		[[gnu::used]]
 		constexpr auto target() const -> u64 {
 			return _data;
 		}
-		
+
+		[[gnu::used]]
+		constexpr auto name() const -> std::string;
+
+		[[gnu::used]]
+		constexpr auto validate() const -> bool {
+			return _data == _mask(_data, _size);
+		}
+
 		constexpr auto operator[](u32 i) const -> u64 {
 			assert(i < _max_size);
 			return _get(_data, i);
@@ -222,6 +235,14 @@ struct std::formatter<tree::Key>
 		return std::format_to(ctx.out(), "0x{:0{}x}/{}", a._data >> (128u - m), n, a._size);
 	}
 };
+
+namespace tree
+{
+	[[gnu::used]]
+	constexpr auto Key::name() const -> std::string {
+		return std::format("{}", *this);
+	}
+}
 
 #ifdef TREE_TESTING
 

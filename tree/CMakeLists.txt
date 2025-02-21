@@ -23,3 +23,7 @@ add_library(tree INTERFACE
 target_include_directories(tree INTERFACE $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}>)
 target_compile_features(tree INTERFACE cxx_std_26)
 target_link_libraries(tree INTERFACE CLI11::CLI11)
+
+if (CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+  target_link_libraries(tree INTERFACE atomic)
+endif (CMAKE_CXX_COMPILER_ID STREQUAL "GNU")

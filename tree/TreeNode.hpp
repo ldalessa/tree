@@ -17,10 +17,85 @@ namespace tree
 	template <class Value>
 	struct TreeNode
 	{
+		struct value_box
+		{
+			Value* _data{};
+			
+			constexpr value_box() = default;
+
+			constexpr value_box(Value* value)
+				: _data(value)
+			{
+			}
+			
+			constexpr auto has_value() const -> bool {
+				return _data != nullptr;
+			}
+
+			constexpr auto value() const -> Value const& {
+				return *_data;
+			}
+		};
+		
+		struct alignas(16) pair
+		{
+			TreeNode* _data[2]{};
+			
+			constexpr pair() = default;
+			
+			constexpr pair(TreeNode* a, TreeNode* b)
+				: _data { a, b }
+			{
+				canonicalize();
+			}
+
+			constexpr auto operator[](uz i) const -> TreeNode* const& {
+				return _data[i];
+			}
+
+			constexpr auto operator[](uz i) -> TreeNode*& {
+				return _data[i];
+			}
+
+			constexpr auto canonicalize() -> pair& {
+				if (_data[1]) {
+					assert(_data[0]);
+					if (less(_data[1]->_key, _data[0]->_key)) {
+						using std::swap;
+						swap(_data[0], _data[1]);
+					}
+				}
+				return *this;
+			}
+
+			constexpr auto validate(Key key) const -> void
+			{
+				if (_data[1]) {
+					assert(_data[0]);
+					assert(key < _data[1]->_key);
+				}
+
+				if (_data[0]) {
+					assert(key < _data[0]->_key);
+				}
+
+				if (_data[0] and _data[1]) {
+					assert(_data[0]->_key <=> _data[1]->_key == std::partial_ordering::unordered);
+					assert(less(_data[0]->_key, _data[1]->_key));
+				}
+			}
+		};
+		
 		Key const _key;
-		std::optional<Value> _value{};
-		std::unique_ptr<TreeNode> _child[2]{};
+		std::atomic<value_box> _value{};
+		std::atomic<pair> _child{};
 		std::shared_mutex mutable _lock{};
+
+		constexpr ~TreeNode() {
+			delete _value.load()._data;
+			delete _child.load()._data[0];
+			delete _child.load()._data[1];
+		}
 		
 		constexpr TreeNode(Key key)
 				: _key(key)
@@ -31,16 +106,14 @@ namespace tree
 		requires (sizeof...(Ts) != 0) and std::constructible_from<Value, Ts...>
 		constexpr TreeNode(Key key, Ts&&... ts)
 				: _key(key)
-				, _value(std::forward<Ts>(ts)...)
+                , _value(new Value(std::forward<Ts>(ts)...))
 		{
 		}
 
-		constexpr TreeNode(std::unique_ptr<TreeNode> a, std::unique_ptr<TreeNode> b)
+		constexpr TreeNode(TreeNode *a, TreeNode *b)
 				: _key(a->_key ^ b->_key)
-				, _child{ std::move(a), std::move(b) }
+				, _child(pair(a, b))
 		{
-			_canonicalize();
-			_validate();
 		}
 
 		// The key is read only once it is constructed.
@@ -49,32 +122,30 @@ namespace tree
 		}
 
 		constexpr auto has_value() const -> bool {
-			auto const _ = std::shared_lock(_lock);
-			return _value.has_value();
+			return _value.load().has_value();
 		}
 
 		constexpr auto value() const -> Value const& {
-			auto const _ = std::shared_lock(_lock);
-			return _value.value();
+			return _value.load().value();
 		}
 
 		constexpr auto find(Key key, TreeNode const* best = nullptr) const
 			-> TreeNode const*
 		{
 			assert(_key <= key);
-			
-			auto const _ = std::shared_lock(_lock);
 
-			if (_value.has_value()) {
+			if (has_value()) {
 				best = this;
 			}
 
-			if (_child[0] and _child[0]->_key <= key) {
-				return _child[0]->find(key);
+			auto const child = _child.load();
+			
+			if (child[0] and child[0]->_key <= key) {
+				return child[0]->find(key);
 			}
 
-			if (_child[1] and _child[1]->_key <= key) {
-				return _child[1]->find(key);
+			if (child[1] and child[1]->_key <= key) {
+				return child[1]->find(key);
 			}
 			
 			return best;
@@ -83,147 +154,109 @@ namespace tree
 		template <class... Ts>
 		constexpr auto insert_or_update(Key key, Ts&&... ts) -> Value const&
 		{
-			auto const _ = exit_scope([&] {
-				_validate();
-			});
-			
-		  retry:
-			{
-				auto const _ = std::shared_lock(_lock);
-			
-				assert(_key <= key);
+			assert(_key <= key);
 
-				if (key == _key) {
-					if (_value.has_value()) {
-						assert(_value.value() == Value(std::forward<Ts>(ts)...));
-						return _value.value();
-					}
-					goto update;
-				}
-			
-				if (_child[0] and _child[0]->_key <= key) {
-					return _child[0]->insert_or_update(key, std::forward<Ts>(ts)...);
-				}
-
-				if (_child[1] and _child[1]->_key <= key) {
-					return _child[1]->insert_or_update(key, std::forward<Ts>(ts)...);
-				}
-			}
-			
-			{
-				auto const _ = std::unique_lock(_lock);
-				
-				if (_child[0] and _child[0]->_key <= key) {
-					goto retry;
-				}
-
-				if (_child[1] and _child[1]->_key <= key) {
-					goto retry;
-				}
-				
-				return _insert(key, std::forward<Ts>(ts)...);
+			if (key == _key) {
+				return _update(std::forward<Ts>(ts)...);
 			}
 
-		  update:
-			{
-				auto const _ = std::unique_lock(_lock);
-				return _value.emplace(std::forward<Ts>(ts)...);
+			auto const child = _child.load();
+			
+			if (child[0] and child[0]->_key <= key) {
+				return child[0]->insert_or_update(key, std::forward<Ts>(ts)...);
 			}
+			
+			if (child[1] and child[1]->_key <= key) {
+				return child[1]->insert_or_update(key, std::forward<Ts>(ts)...);
+			}
+	
+			return _insert(child, key, std::forward<Ts>(ts)...);
 		}
 		
 	  private:
-		constexpr auto _validate() const -> void
+		template <class... Ts>
+		constexpr auto _update(Ts&&... ts) -> Value const&
 		{
-			if (_child[1]) {
-				assert(_child[0]);
-				assert(_key < _child[1]->_key);
-			}
-
-			if (_child[0]) {
-				assert(_key < _child[0]->_key);
-			}
-
-			if (_child[0] and _child[1]) {
-				assert(_child[0]->_key <=> _child[1]->_key == std::partial_ordering::unordered);
-				assert(less(_child[0]->_key, _child[1]->_key));
-			}
+			auto value = new Value(std::forward<Ts>(ts)...);
+			auto old = _value.exchange(value_box(value));
+			delete old._data;
+			return *value;
 		}
 		
-		constexpr auto _canonicalize() -> void
-		{
-			if (not _child[1]) {
-				return;
-			}
-			assert(_child[0]);
-			if (not less(_child[0]->_key, _child[1]->_key)) {
-				std::swap(_child[0], _child[1]);
-			}
-		}
-
 		template <class... Ts>
-		constexpr auto _insert(Key key, Ts&&... ts) -> Value const&
+		constexpr auto _insert(pair child, Key key, Ts&&... ts) -> Value const&
 		{
-			auto const _ = exit_scope([&] {
-				_canonicalize();
-				_validate();
-			});
+			auto expected = child;
 			
-			auto node = std::make_unique<TreeNode>(key, std::forward<Ts>(ts)...);
-			auto const& value = node->value();
+			auto const cas_child = [&](pair child, TreeNode* node, auto... nodes) -> Value const&
+			{
+				child.canonicalize();
+				child.validate(_key);
+				if (not _child.compare_exchange_strong(expected, child)) {
+					((node->_child = pair{}, delete node), ..., (nodes->_child = pair{}, delete nodes));
+					return insert_or_update(key, std::forward<Ts>(ts)...);
+				}
+				return node->value();
+			};
 			
-			// if the node dominates either or both child, reorder them, I
-			// hold the lock on this-> and node is not public yet
-			if (_child[0] and key < _child[0]->_key) {
-				node->_child[0] = std::move(_child[0]);
+			auto node = new TreeNode(key, std::forward<Ts>(ts)...);
+			
+			{
+				pair p{};
+				
+				// if the node dominates either or both child, reorder them
+				if (child[0] and key < child[0]->_key) {
+					p[0] = std::exchange(child[0], nullptr);
+				}
+
+				if (child[1] and key < child[1]->_key) {
+					p[1] = std::exchange(child[1], nullptr);
+				}
+
+				p.canonicalize();
+				p.validate(key);
+				node->_child.store(p);
 			}
 
-			if (_child[1] and key < _child[1]->_key) {
-				node->_child[1] = std::move(_child[1]);
-			}
-
-			node->_canonicalize();
-			node->_validate();
-			
 			// case 1: _child[0] is null
-			if (not _child[0]) {
-				_child[0] = std::move(node);
-				return value;
+			if (not child[0]) {
+				child[0] = node;
+				return cas_child(child, node);
 			}
 
 			// case 2: _child[1] is null
-			if (not _child[1]) {
-				_child[1] = std::move(node);
-				return value;
+			if (not child[1]) {
+				child[1] = node;
+				return cas_child(child, node);
 			}
 
 			// case 3: I have two child
-			auto const a = (_child[0]->_key ^ _child[1]->_key).size();
-			auto const b = (_child[0]->_key ^ key).size();
-			auto const c = (key ^ _child[1]->_key).size();
+			auto const a = (child[0]->_key ^ child[1]->_key).size();
+			auto const b = (child[0]->_key ^ key).size();
+			auto const c = (key ^ child[1]->_key).size();
 				
 			// case 3a:
 			if (a < b and b < c) {
-				_child[1] = std::make_unique<TreeNode>(std::move(node), std::move(_child[1]));
-				return value;
+				child[1] = new TreeNode(node, std::exchange(child[1], nullptr));
+				return cas_child(child, node, child[1]);
 			}
 
 			// case 3b:
 			if (a < b) {
-				_child[0] = std::make_unique<TreeNode>(std::move(node), std::move(_child[0]));
-				return value;
+				child[0] = new TreeNode(node, std::exchange(child[0], nullptr));
+				return cas_child(child, node, child[0]);
 			}
 
 			// case 3c:
 			if (a < c) {
-				_child[1] = std::make_unique<TreeNode>(std::move(node), std::move(_child[1]));
-				return value;
+				child[1] = new TreeNode(node, std::exchange(child[1], nullptr));
+				return cas_child(child, node, child[1]);
 			}
 
 			// case 3d:
-			_child[0] = std::make_unique<TreeNode>(std::move(_child[0]), std::move(_child[1]));
-			_child[1] = std::move(node);
-			
-			return value;
+			child[0] = new TreeNode(std::exchange(child[0], nullptr), std::exchange(child[1], nullptr));
+			child[1] = node;
+			return cas_child(child, node, child[0]);
 		}
 	};
 }
@@ -236,16 +269,16 @@ namespace tree::testing
 {
 	inline const auto test_insert = test<[] {
 		TreeNode<int> root("0/0");
-		assert(root._child[0] == nullptr);
-		assert(root._child[1] == nullptr);
+		assert(root._child.load()[0] == nullptr);
+		assert(root._child.load()[1] == nullptr);
 				
 		{
 			auto const& a = root.insert_or_update("1/128", 1);
 			auto const* p = root.find("1/128", &root);
-			assert(p == root._child[0].get());
-			assert(root._child[0]->_child[0] == nullptr);
-			assert(root._child[0]->_child[1] == nullptr);
-			assert(root._child[1] == nullptr);
+			assert(p == root._child.load()[0]);
+			assert(root._child.load()[0]->_child.load()[0] == nullptr);
+			assert(root._child.load()[0]->_child.load()[1] == nullptr);
+			assert(root._child.load()[1] == nullptr);
 
 			assert(a == 1);
 			assert(a == p->value());
@@ -256,8 +289,8 @@ namespace tree::testing
 			auto const& a = root.insert_or_update("0/128", 42);
 			auto const* p = root.find("0/128", &root);
 			auto const* q = root.find("1/128", &root);
-			assert(p == root._child[0].get());
-			assert(q == root._child[1].get());
+			assert(p == root._child.load()[0]);
+			assert(q == root._child.load()[1]);
 			
 			assert(a == 42);
 			assert(a == p->value());
