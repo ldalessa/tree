@@ -7,7 +7,9 @@
 #include <concurrentqueue.h>
 
 #include <algorithm>
+#include <barrier>
 #include <bit>
+#include <chrono>
 #include <format>
 #include <print>
 #include <thread>
@@ -48,17 +50,20 @@ auto main(int argc, char** argv) -> int
 	CLI11_PARSE(app, argc, app.ensure_utf8(argv));
 	
 	require(1 <= n_consumers);
+	require(1 <= n_producers);
 	require(1 <= n_services);
 
-	std::print("n_consumers: {}\nn_producers: {}\nn_services: {}\nn_edges: {}\n", n_consumers, n_producers, n_services, n_edges);	
+	auto const n_edges_per_producer = n_edges / n_producers;
+
+	std::print("n_consumers: {}\nn_producers: {}\nn_services: {}\nn_edges: {}\nn_edges_per_producer : {}\n", n_consumers, n_producers, n_services, n_edges, n_edges_per_producer);
 	std::fflush(stdout);
 
+	
 	// auto tlt = TreeNode<u32>("0/0");
 	auto tlt = TopLevelTreeNode("0/0");
 	auto queues = std::vector<mc::ConcurrentQueue<Key>>(n_consumers);
 	auto done = std::atomic_flag(false);
-	auto producers = std::vector<std::jthread>();
-	auto consumers = std::vector<std::jthread>();
+	auto threads = std::vector<std::jthread>();
 	auto services = std::vector<GlobTreeNode>();
 
 	// Allocate local trees for each service.
@@ -72,14 +77,18 @@ auto main(int argc, char** argv) -> int
 		u32 const n_bits = std::countr_zero(std::bit_ceil(n_services));
 		tlt.insert_or_update({std::rotr((u128)i, n_bits), n_bits}, i);
 	}
-
+	
+	auto consumer_barrier = std::barrier(n_consumers + 1);
+	
 	// Start the consumer threads.
 	for (u32 i = 0; i < n_consumers; ++i) {
-		consumers.emplace_back([&,i=i]
+		threads.emplace_back([&,i=i]
 		{
 			std::print("starting consumer {}\n", i);
 			
 			auto token = mc::ConsumerToken(queues[i]);
+
+			consumer_barrier.arrive_and_wait();
 			
 			u64 n = 0;
 			u64 stalls = 0;
@@ -102,13 +111,17 @@ auto main(int argc, char** argv) -> int
 				n += 1;
 			}
 
+			consumer_barrier.arrive_and_wait();
+						
 			std::print("consumer {} processed {} keys ({} stalls)\n", i, n, stalls);
 		});
 	}
 
+	auto producer_barrier = std::barrier(n_producers + 1);
+	
 	// Start the producer threads.
 	for (u32 i = 0; i < n_producers; ++i) {
-		producers.emplace_back([&,i=i]
+		threads.emplace_back([&,i=i]
 		{
 			std::print("starting producer {}\n", i);
 			
@@ -122,13 +135,15 @@ auto main(int argc, char** argv) -> int
 			// Open the file for reading.
 			auto mm = ingest::mmio::Reader(path, n_producers, i);			
 
+			producer_barrier.arrive_and_wait();
+			
 			// Count the number of tuples that I'm processing, and the amount of
 			// stalling I have to do.
 			u64 n = 0;
 			u64 stalls = 0;
 			// Process each tuple.
 			while (auto tuple = mm.next()) {
-				if (n == n_edges) break;
+				if (n == n_edges_per_producer) break;
 				
 				auto const key = tuple_to_key(*tuple);
 				auto const service = tlt.find(key)->value();
@@ -139,41 +154,50 @@ auto main(int argc, char** argv) -> int
 				}
 				n += 1;
 			}
+
+			producer_barrier.arrive_and_wait();
 			
 			// Dump output for this thread.
 			std::print("producer {} processed {} keys ({} stalls)\n", i, n, stalls);
 		});
 	}
 
-	// Wait for the producers to complete.
-	for (auto& thread : producers) {
-		thread.join();
-	}
+	auto const start_time = std::chrono::steady_clock::now();
+	consumer_barrier.arrive_and_wait();
+	producer_barrier.arrive_and_wait();
 
-	// Signal the consumers.
+	producer_barrier.arrive_and_wait();
 	done.test_and_set();
+	consumer_barrier.arrive_and_wait();
+	auto const end_time = std::chrono::steady_clock::now();
 
-	// Wait for the consumers to complete.
-	for (auto& thread : consumers) {
+	std::print("time: {}\n", end_time - start_time);
+	
+	// Join all of our threads.
+	for (auto& thread : threads) {
 		thread.join();
 	}
 
 	if (validate) {
-		auto mm = ingest::mmio::Reader(path);
-		u64 n = 0;
-		while ( auto tuple = mm.next()) {
-			if (n == n_edges) break;
+		u64 m = 0;
+		for (u32 i = 0; i < n_producers; ++i) {
+			auto mm = ingest::mmio::Reader(path, n_producers, i);
+			u64 n = 0;
+			while (auto tuple = mm.next()) {
+				if (n == n_edges_per_producer) break;
 
-			auto const key = tuple_to_key(*tuple);
-			auto const node = tlt.find(key);
-			require(node != nullptr);
-			require(node->has_value());
+				auto const key = tuple_to_key(*tuple);
+				auto const node = tlt.find(key);
+				require(node != nullptr);
+				require(node->has_value());
 
-			auto const service = node->value();
-			require(services[service].find(key));
+				auto const service = node->value();
+				require(services[service].find(key));
 
-			n += 1;
+				n += 1;
+				m += 1;
+			}
 		}
-		std::print("validated {} tuples\n", n);
+		std::print("validated {} tuples\n", m);
 	}
 }
