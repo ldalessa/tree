@@ -101,7 +101,7 @@ auto main(int argc, char** argv) -> int
 	// Allocate the queues.
 	queues.reserve(n_consumers);
 	for (u32 i = 0; i < n_consumers; ++i) {
-		queues.emplace_back(queue_size, 0, n_producers + 1);//n_producers + 1, 0);
+		queues.emplace_back(queue_size, n_producers + 1, 0);
 	}
 	
 	// Allocate local trees and the bubbles for each service.
