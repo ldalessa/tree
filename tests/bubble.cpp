@@ -25,11 +25,7 @@ namespace mc = moodycamel;
 static constexpr auto service_to_consumer(u32 i, u32 n_services, u32 n_consumers) -> u32 {
 	auto const d = n_services / n_consumers + !!(n_services % n_consumers);
 	return i / d;
-}
-	
-static constexpr auto tuple_to_key(ingest::Tuple const& tuple) -> Key {
-	return Key(tuple.k, tuple.b);
-}
+}	
 
 static constexpr auto close_mapping(Key const& key) -> u32 {
 	return 0;
@@ -43,7 +39,7 @@ namespace
 
 	struct ConsumerQueues
 	{
-		struct MPSCQueue : mc::ConcurrentQueue<Key> {
+		struct MPSCQueue : mc::ConcurrentQueue<u128> {
 			using ConcurrentQueue::ConcurrentQueue;
 		};
 		
@@ -100,7 +96,7 @@ namespace
 			{
 			}
 
-			constexpr auto enqueue(Key const& key) -> void {
+			constexpr auto enqueue(u128 key) -> void {
 				while (not _queue.try_enqueue(_token, key)) {
 					_stalls += 1;
 				}
@@ -118,8 +114,8 @@ namespace
 			{
 			}
 
-			constexpr auto try_dequeue() -> std::optional<Key> {
-				Key key;
+			constexpr auto try_dequeue() -> std::optional<u128> {
+				u128 key;
 				if (_queue.try_dequeue(_token, key)) {
 					_count += 1;
 					return key;
@@ -146,7 +142,7 @@ namespace
 			return out;
 		}
 
-		constexpr auto get_all_tx_endpoints() const -> std::vector<TxEndpoint> {
+		constexpr auto get_all_tx_endpoints() -> std::vector<TxEndpoint> {
 			return get_tx_endpoints(stdv::iota(0zu, _queues.size()));
 		}
 	};
@@ -347,8 +343,7 @@ auto main(int argc, char** argv) -> int
 			BubbleRequest request;
 			while (bubble_service.try_dequeue(request)) {
 				tlt.insert_or_update(request.key, close_mapping(request.key));
-				for (auto data : request.glob) {
-					auto const key = Key(data, 128_u32);
+				for (auto key : request.glob) {
 					auto const service = tlt.find(key)->value();
 					auto const consumer = service_to_consumer(service, n_services, n_consumers);
 					require(consumer < n_consumers);
