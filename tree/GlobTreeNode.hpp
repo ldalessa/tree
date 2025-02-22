@@ -58,9 +58,8 @@ namespace tree
 			return std::move(_glob.value());
 		}
 		
-		constexpr auto find(Key const& key, Glob const* best = nullptr) const -> bool
+		constexpr auto find(u128 key, Glob const* best = nullptr) const -> bool
 		{
-			assert(key.size() == 128_u32);
 			assert(_key <= key);
 
 			if (_glob.has_value()) {
@@ -78,9 +77,8 @@ namespace tree
 			return best ? best->contains(key) : false; 
 		}
 
-		constexpr auto insert(Key const& key, GlobTreeNode* best = nullptr) -> bool
+		constexpr auto insert(u128 key, GlobTreeNode* best = nullptr) -> bool
 		{
-			assert(key.size() == 128_u128);
 			assert(_key <= key);
 
 			if (_glob.has_value()) {
@@ -139,9 +137,8 @@ namespace tree
 			}
 		}
 
-		constexpr auto _insert(Key const& key) -> bool
+		constexpr auto _insert(u128 key) -> bool
 		{
-			assert(key.size() == 128_u128);
 			assert(_glob.has_value());
 			
 			if (_glob->insert(key)) {
@@ -181,7 +178,7 @@ namespace tree
 			return insert(key);
 		}
 
-		constexpr auto _insert(Key const& key, Glob glob) -> void
+		constexpr auto _insert(Key key, Glob glob) -> void
 		{
 			assert(_key <= key);
 			assert(glob.size() != 0);
@@ -287,11 +284,11 @@ namespace tree::testing
 		auto const capacity = std::exchange(tree::options::default_glob_capacity, 2);
 
 		auto node = GlobTreeNode("0/0");
-		assert(node.insert("0/128"));
-		assert(node.insert("1/128"));
-		assert(node.insert("2/128"));
-		assert(node.insert("3/128"));
-		assert(node.insert("4/128"));
+		assert(node.insert(0));
+		assert(node.insert(1));
+		assert(node.insert(2));
+		assert(node.insert(3));
+		assert(node.insert(4));
 
 		tree::options::factor = factor;
 		tree::options::bubble = bubble;

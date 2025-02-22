@@ -1,5 +1,5 @@
+#include "common.hpp"
 #include "require.hpp"
-
 #include "tree/tree.hpp"
 #include "ingest/mmio.hpp"
 
@@ -18,6 +18,8 @@
 #include <vector>
 
 using namespace tree;
+using namespace tree::tests;
+
 namespace mc = moodycamel;
 
 static constexpr auto service_to_consumer(u32 i, u32 n_services, u32 n_consumers) -> u32 {
@@ -196,7 +198,6 @@ auto main(int argc, char** argv) -> int
 	std::print("            validate: {}\n", validate);
 	std::print("\n");
 	std::fflush(stdout);
-
 	
 	auto tlt = TopLevelTree();
 	// auto tlt = TopLevelTreeNode("0/0");

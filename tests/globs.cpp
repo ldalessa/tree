@@ -1,5 +1,4 @@
-#undef DNDEBUG
-
+#include "common.hpp"
 #include "tree/tree.hpp"
 #include "ingest/mmio.hpp"
 
@@ -9,10 +8,7 @@
 #include <print>
 
 using namespace tree;
-
-static constexpr auto tuple_to_key(ingest::Tuple const& tuple) -> Key {
-	return Key(tuple.k, tuple.b);
-}
+using namespace tree::tests;
 
 auto main(int argc, char** argv) -> int
 {

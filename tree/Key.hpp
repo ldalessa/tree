@@ -112,6 +112,10 @@ namespace tree
 		
 		constexpr friend auto operator==(Key, Key) -> bool = default;
 
+		constexpr friend auto operator==(Key a, u128 key) -> bool {
+			return a == Key(key, _max_size);
+		}
+
 		constexpr friend auto operator<=>(Key a, Key b) -> std::partial_ordering
 		{
 			if (a._size < b._size and a._matches_prefix(b._data)) {
@@ -129,6 +133,10 @@ namespace tree
 			return std::partial_ordering::unordered;
 		}
 
+		constexpr friend auto operator<=>(Key a, u128 key) -> std::partial_ordering {
+			return a <=> Key(key, _max_size);
+		}
+
 		constexpr friend auto operator^(Key a, Key b) -> Key
 		{
 			auto const c = a._data ^ b._data;
@@ -136,6 +144,10 @@ namespace tree
 			return Key(a._data, n);
 		}
 
+		constexpr friend auto operator^(Key a, u128 b) -> Key {
+			return a ^ Key(b, _max_size);
+		}
+		
 		/// Append @p bit to the key and extend its size by one.
 		//
 		// @precondition size() != _max_size

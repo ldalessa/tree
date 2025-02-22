@@ -17,10 +17,8 @@ namespace tree
 {
 	struct Glob
 	{
-		using value_type = u128;
-		
 		u64 _capacity = options::default_glob_capacity;
-		std::vector<value_type> _data = _default_data();
+		std::vector<u128> _data = _default_data();
 
 		Glob() = default;
 
@@ -52,16 +50,14 @@ namespace tree
 			return _data.erase(stdr::begin(range), stdr::end(range));
 		}
 
-		auto contains(Key const& key) const -> bool {
-			assert(key.size() == Key::max_size());
-			return stdr::find(_data, key.data()) != _data.end();
+		auto contains(u128 key) const -> bool {
+			return stdr::find(_data, key) != _data.end();
 		}
 
-		auto insert(Key const& key) -> bool
+		auto insert(u128 key) -> bool
 		{
-			assert(key.size() == Key::max_size());
 			if (_data.size() < _capacity) {
-				_data.push_back(key.data());
+				_data.push_back(key);
 				return true;
 			}
 			return false;
@@ -99,8 +95,8 @@ namespace tree
 		}
 		
 	  private:
-		static auto _default_data() -> std::vector<value_type> {
-			std::vector<value_type> data;
+		static auto _default_data() -> std::vector<u128> {
+			std::vector<u128> data;
 			data.reserve(options::default_glob_capacity);
 			return data;
 		}
