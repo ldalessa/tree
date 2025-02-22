@@ -17,7 +17,6 @@ namespace tree::options
 	inline u32 bubble = -1_u32;
 	inline u32 verbose = 0;
 	inline u32 debug = 0;
-
 	
 	inline void print_options(FILE* out)
 	{

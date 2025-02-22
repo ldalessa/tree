@@ -29,13 +29,14 @@ int main(int, char** argv)
 		queues.emplace_back(S, N, 0);
 	}
 
-	std::atomic_flag done{};
-	std::barrier barrier(N + M + 1);
+	std::atomic_flag done_producing{};
+	std::barrier producer_barrier(N + 1);
+	std::barrier consumer_barrier(M + 1);
 	std::mutex token_lock{};
 
 	for (int i = 0; i < M; ++i)
 	{
-		threads.emplace_back([&]
+		threads.emplace_back([&,id=i]
 		{
 			// get a token don't know if the lock is necessary
 			auto token = [&] {
@@ -43,20 +44,20 @@ int main(int, char** argv)
 				return moodycamel::ConsumerToken(queues[i]);
 			}();
 
-			barrier.arrive_and_wait();
+			consumer_barrier.arrive_and_wait();
 			
 			int value;
-			while (not done.test()) {
-				while (queues[i].try_dequeue(token, value)) {
+			while (not done_producing.test()) {
+				while (queues[id].try_dequeue(token, value)) {
 					do_not_optimize(value);
 				}
 			}
 
-			while (queues[i].try_dequeue(token, value)) {
+			while (queues[id].try_dequeue(token, value)) {
 				do_not_optimize(value);
 			}
 
-			barrier.arrive_and_wait();
+			consumer_barrier.arrive_and_wait();
 		});
 	}
 
@@ -70,21 +71,23 @@ int main(int, char** argv)
 				tokens.emplace_back(queues[j]);
 			}
 
-			barrier.arrive_and_wait();
+			producer_barrier.arrive_and_wait();
 			
 			for (int j = 0; j < V; ++j) {
 				while (not queues[j % M].try_enqueue(tokens[j % M], j)) {
 				}
 			}
 
-			barrier.arrive_and_wait();
+			producer_barrier.arrive_and_wait();
 		});
 	}
 
-	barrier.arrive_and_wait();
-	done.test_and_set();
-	barrier.arrive_and_wait();
-	
+	consumer_barrier.arrive_and_wait();
+	producer_barrier.arrive_and_wait();
+	producer_barrier.arrive_and_wait();
+	done_producing.test_and_set();
+	consumer_barrier.arrive_and_wait();
+
 	for (auto& thread : threads) {
 		thread.join();
 	}

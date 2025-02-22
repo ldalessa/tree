@@ -57,14 +57,25 @@ namespace tree
 				return _data[i];
 			}
 
-			constexpr auto canonicalize() -> pair& {
-				if (_data[1]) {
-					assert(_data[0]);
-					if (less(_data[1]->_key, _data[0]->_key)) {
-						using std::swap;
+			constexpr auto canonicalize() -> pair&
+			{
+				using std::swap;
+
+				if (not _data[0]) {
+					if (_data[1]) {
 						swap(_data[0], _data[1]);
 					}
+					return *this;
 				}
+
+				if (not _data[1]) {
+					return *this;
+				}
+				
+				if (less(_data[1]->_key, _data[0]->_key)) {
+					swap(_data[0], _data[1]);
+				}
+				
 				return *this;
 			}
 
@@ -141,11 +152,11 @@ namespace tree
 			auto const child = _child.load();
 			
 			if (child[0] and child[0]->_key <= key) {
-				return child[0]->find(key);
+				return child[0]->find(key, best);
 			}
 
 			if (child[1] and child[1]->_key <= key) {
-				return child[1]->find(key);
+				return child[1]->find(key, best);
 			}
 			
 			return best;

@@ -19,10 +19,12 @@ namespace tree
 	
 	struct GlobTreeNode
 	{
-		Key const _key;
+		Key const _key{};
 		std::optional<Glob> _glob{};
 		std::unique_ptr<GlobTreeNode> _child[2]{};
 
+		constexpr GlobTreeNode() = default;
+		
 		constexpr GlobTreeNode(Key const& key)
 				: _key(key)
 		{
@@ -40,6 +42,20 @@ namespace tree
 		{
 			_canonicalize();
 			_validate();
+		}
+
+		constexpr auto key() const -> Key const& {
+			return _key;
+		}
+
+		constexpr auto value() const -> Glob const& {
+			assert(_glob.has_value());
+			return _glob.value();
+		}
+
+		constexpr auto take_value() -> Glob&& {
+			assert(_glob.has_value());
+			return std::move(_glob.value());
 		}
 		
 		constexpr auto find(Key const& key, Glob const* best = nullptr) const -> bool
@@ -134,7 +150,18 @@ namespace tree
 			
 			if (options::bubble <= _key.size()) {
 				auto [range, bkey] = _glob->split_point(options::global_fit, _key);
-				throw GlobTreeNode(bkey, _glob->extract(range));
+				auto glob = _glob->extract(range);
+				if (bkey <= key) {
+					if (not glob.insert(key)) {
+						throw error("Bubbled glob does not have space for key {}", key);
+					}
+				}
+				else {
+					if (not _glob->insert(key)) {
+						throw error("Bubbled glob did not make space for key {}", key);
+					}
+				}
+				throw GlobTreeNode(bkey, std::move(glob));
 			}
 
 			auto [range, fit] = _glob->split_point(options::local_fit, _key);

@@ -32,6 +32,14 @@ namespace tree
 			return _data.size();
 		}
 
+		auto begin() const -> decltype(_data.begin()) {
+			return _data.begin();
+		}
+
+		auto end() const -> decltype(_data.end()) {
+			return _data.end();
+		}
+		
 		auto extract(stdr::range auto range) -> Glob
 		{
 			auto const _ = exit_scope([&] {
