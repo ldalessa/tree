@@ -1,5 +1,6 @@
 #include "common.hpp"
 #include "require.hpp"
+#include "MPSCQueue.hpp"
 #include "tree/tree.hpp"
 #include "ingest/mmio.hpp"
 
@@ -11,6 +12,7 @@
 #include <barrier>
 #include <bit>
 #include <chrono>
+#include <deque>
 #include <format>
 #include <print>
 #include <thread>
@@ -27,129 +29,58 @@ static constexpr auto service_to_consumer(u32 i, u32 n_services, u32 n_consumers
 	return i / d;
 }	
 
-static constexpr auto close_mapping(Key const& key) -> u32 {
-	return 0;
-}
-
 namespace
 {
-	struct TopLevelTree : TreeNode<u32> {
-		TopLevelTree() : TreeNode("0/0") {};
+	struct TopLevelTree
+	{
+		TreeNode<u32> _tree;
+		
+		TopLevelTree(u32 n_services) : _tree("0/0")
+		{
+			u32 const n_bits = std::countr_zero(std::bit_ceil(n_services));
+			for (u32 i = 0; i < n_services; ++i) {
+				auto const j = u128(i);
+				auto const key = Key(std::rotr(j, n_bits), n_bits);
+				_tree.insert_or_update(key, i);
+			}
+		}
+
+		auto lookup(u128 key) -> u32 {
+			return _tree.find(key)->value();
+		}
+		
+		auto insert(Key const& key) {
+			_tree.insert_or_update(key, close_mapping(key));
+		}
+		
+		static constexpr auto close_mapping(Key const& key) -> u32 {
+			return 0;
+		}
 	};
 
 	struct ConsumerQueues
 	{
-		struct MPSCQueue : mc::ConcurrentQueue<u128> {
-			using ConcurrentQueue::ConcurrentQueue;
-		};
+		std::deque<MPSCQueue> _queues;
 		
-		std::vector<MPSCQueue> _queues;
-		std::mutex _token_lock;
-		
-		constexpr ConsumerQueues(u32 n_consumers, u32 n_producers, u32 size) {
-			_queues.reserve(n_consumers);
+		constexpr ConsumerQueues(u32 n_consumers, u32 n_producers, u32 size)
+		{
 			for (u32 i = 0; i < n_consumers; ++i) {
-				_queues.emplace_back(size, 0, n_producers + 1);
+				_queues.emplace_back(n_producers + 1, size);
 			}
 		}
 
-		constexpr auto get_producer_token(uz i) -> mc::ProducerToken {
-			require(i < _queues.size());
-			auto const _ = std::scoped_lock(_token_lock);
-			return mc::ProducerToken(_queues[i]);
+		constexpr auto get_rx_endpoint(uz i) -> MPSCQueue::RxEndpoint {
+			return _queues[i].get_rx_endpoint();
 		}
-
-		constexpr auto get_consumer_token(uz i) -> mc::ConsumerToken {
-			require(i < _queues.size());
-			auto const _ = std::scoped_lock(_token_lock);
-			return mc::ConsumerToken(_queues[i]);
-		}
-
-		struct Endpoint
-		{
-			MPSCQueue& _queue;
-			u64 _count{};
-			u64 _stalls{};
-			
-			constexpr Endpoint(MPSCQueue& queue) : _queue(queue) {}
-
-			constexpr auto size() const -> u64 {
-				return _queue.size_approx();
-			}
-			
-			constexpr auto stalls() const -> u64 {
-				return _stalls;
-			}
-
-			constexpr auto count() const -> u64 {
-				return _count;
-			}
-		};
 		
-		struct TxEndpoint : Endpoint
-		{
-			mc::ProducerToken _token;
-			
-			constexpr TxEndpoint(MPSCQueue& queue, mc::ProducerToken token)
-					: Endpoint(queue)
-					, _token(std::move(token))
-			{
-			}
-
-			constexpr auto enqueue(u128 key) -> void {
-				while (not _queue.try_enqueue(_token, key)) {
-					_stalls += 1;
-				}
-				_count += 1;
-			}
-		};
-
-		struct RxEndpoint : Endpoint
-		{
-			mc::ConsumerToken _token;
-			
-			constexpr RxEndpoint(MPSCQueue& queue, mc::ConsumerToken token)
-					: Endpoint(queue)
-					, _token(std::move(token))
-			{
-			}
-
-			constexpr auto try_dequeue() -> std::optional<u128> {
-				u128 key;
-				if (_queue.try_dequeue(_token, key)) {
-					_count += 1;
-					return key;
-				}
-				_stalls += 1;
-				return std::nullopt;
-			}
-		};
-
-		constexpr auto get_rx_endpoint(uz i) -> RxEndpoint {
-			return RxEndpoint(_queues[i], get_consumer_token(i));
-		}
-
-		constexpr auto get_tx_endpoint(uz i) -> TxEndpoint {
-			return TxEndpoint(_queues[i], get_producer_token(i));
-		}
-
-		constexpr auto get_tx_endpoints(stdr::sized_range auto is) -> std::vector<TxEndpoint> {
-			std::vector<TxEndpoint> out;
-			out.reserve(stdr::size(is));
-			for (auto i : is) {
-				out.emplace_back(_queues[i], get_producer_token(i));
+		constexpr auto get_tx_endpoints() -> std::vector<MPSCQueue::TxEndpoint> {
+			std::vector<MPSCQueue::TxEndpoint> out;
+			out.reserve(_queues.size());
+			for (auto&& q : _queues) {
+				out.emplace_back(q.get_tx_endpoint());
 			}
 			return out;
 		}
-
-		constexpr auto get_all_tx_endpoints() -> std::vector<TxEndpoint> {
-			return get_tx_endpoints(stdv::iota(0zu, _queues.size()));
-		}
-	};
-	
-	struct BubbleRequest {
-		Key key;
-		Glob glob;
 	};
 }
 
@@ -195,9 +126,8 @@ auto main(int argc, char** argv) -> int
 	std::print("\n");
 	std::fflush(stdout);
 	
-	auto tlt = TopLevelTree();
-	// auto tlt = TopLevelTreeNode("0/0");
-	// auto queues = std::vector<mc::BlockingConcurrentQueue<Key>>();
+	auto tlt = TopLevelTree(n_services);
+	
 	auto bubbled = std::vector<TopLevelTreeNode>();
 	auto queues = ConsumerQueues(n_consumers, n_producers, queue_size);
 	auto done_producing = std::atomic_flag(false);
@@ -205,7 +135,7 @@ auto main(int argc, char** argv) -> int
 	auto threads = std::vector<std::jthread>();
 	auto services = std::vector<GlobTreeNode>();
 
-	auto bubble_service = mc::BlockingConcurrentQueue<BubbleRequest>();
+	auto bubble_service = BlockingMPSCQueue();//(n_producers, 512);
 	auto bubbles_created = std::atomic<u32>();
 	auto bubbles_processed = std::atomic<u32>();	
 	
@@ -216,18 +146,7 @@ auto main(int argc, char** argv) -> int
 		bubbled.emplace_back("0/0");
 	}
 
-	// Allocate top level tree nodes for each service.
-	u32 const n_bits = std::countr_zero(std::bit_ceil(n_services));
-	for (u32 i = 0; i < n_services; ++i) {
-		auto const j = u128(i);
-		auto const key = Key(std::rotr(j, n_bits), n_bits);
-		if (options::verbose) {
-			std::print("inserting tlt entry {}->{}\n", key, i);
-		}
-		tlt.insert_or_update(key, i);
-		require(tlt.find(key)->value() == i);
-	}
-	
+	// Allocate top level tree nodes for each service.	
 	auto consumer_barrier = std::barrier(n_consumers + 1);
 
 	std::mutex token_mutex;
@@ -239,11 +158,7 @@ auto main(int argc, char** argv) -> int
 			std::print("starting consumer {}\n", id);
 
 			auto rx = queues.get_rx_endpoint(id);
-
-			auto bubble_token = [&] {
-				auto const _ = std::unique_lock(token_mutex);
-				return mc::ProducerToken(bubble_service);
-			}();
+			auto bubbles = bubble_service.get_tx_endpoint();
 
 			consumer_barrier.arrive_and_wait();
 			
@@ -251,10 +166,10 @@ auto main(int argc, char** argv) -> int
 
 			auto handle_requests = [&] {
 				while (auto key = rx.try_dequeue()) {
-					auto const service = tlt.find(*key)->value();
+					auto const service = tlt.lookup(*key);
 					if (bubbled[service].find(*key, nullptr)) {
 						// just drop it for now
-						std::print("WARNING: dropping key\n");
+						// std::print("WARNING: dropping key\n");
 						continue;
 					}
 
@@ -265,9 +180,8 @@ auto main(int argc, char** argv) -> int
 					} catch (GlobTreeNode& node) {
 						bubbles_created += 1;
 						bubbled[service].insert_or_update(node._key, 0);
-						auto request = BubbleRequest(node.key(), node.take_value());
-						while (not bubble_service.enqueue(bubble_token, std::move(request))) {
-						}
+						tlt.insert(node._key);
+						// bubbles.enqueue(node.value());
 					}
 				}
 			};
@@ -285,7 +199,7 @@ auto main(int argc, char** argv) -> int
 			
 			consumer_barrier.arrive_and_wait();
 						
-			std::print("consumer {} processed {} keys ({} stalls)\n", id, n, rx.stalls());
+			std::print("consumer {} processed {} keys ({} stalls)\n", id, n, rx.stalls);
 		});
 	}
 
@@ -298,7 +212,7 @@ auto main(int argc, char** argv) -> int
 			std::print("starting producer {}\n", i);
 			
 			// Allocate a token for each of the queues.
-			auto tx = queues.get_tx_endpoints(stdv::iota(0_u32, n_consumers));
+			auto tx = queues.get_tx_endpoints();
 
 			// Open the file for reading.
 			auto mm = ingest::mmio::Reader(path, n_producers, i);			
@@ -314,7 +228,7 @@ auto main(int argc, char** argv) -> int
 				if (n == n_edges_per_producer) break;
 				
 				auto const key = tuple_to_key(*tuple);
-				auto const service = tlt.find(key)->value();
+				auto const service = tlt.lookup(key);
 				auto const consumer = service_to_consumer(service, n_services, n_consumers);
 				require(consumer < n_consumers);
 				tx[consumer].enqueue(key);
@@ -325,7 +239,7 @@ auto main(int argc, char** argv) -> int
 
 			u64 stalls{};
 			for (auto& q : tx) {
-				stalls += q.stalls();
+				stalls += q.stalls;
 			}
 			
 			// Dump output for this thread.
@@ -336,19 +250,16 @@ auto main(int argc, char** argv) -> int
 	// Bubble service.
 	threads.emplace_back([&]
 	{
-		auto tx = queues.get_tx_endpoints(stdv::iota(0_u32, n_consumers));
-
+		auto tx = queues.get_tx_endpoints();
+		auto bubbles = bubble_service.get_rx_endpoint();
+		
 		auto process_requests = [&]
 		{
-			BubbleRequest request;
-			while (bubble_service.try_dequeue(request)) {
-				tlt.insert_or_update(request.key, close_mapping(request.key));
-				for (auto key : request.glob) {
-					auto const service = tlt.find(key)->value();
-					auto const consumer = service_to_consumer(service, n_services, n_consumers);
-					require(consumer < n_consumers);
-					tx[consumer].enqueue(key);
-				}
+			while (auto key = bubbles.try_dequeue()) {
+				auto const service = tlt.lookup(*key);
+				auto const consumer = service_to_consumer(service, n_services, n_consumers);
+				require(consumer < n_consumers);
+				tx[consumer].enqueue(*key);
 				bubbles_processed += 1;
 			}
 		};		
@@ -362,7 +273,7 @@ auto main(int argc, char** argv) -> int
 			cleanup.arrive_and_wait();
 		} while (bubbles_processed != bubbles_created);
 
-		require(bubble_service.size_approx() == 0);
+		require(bubble_service.size() == 0);
 	});
 
 	auto const start_time = std::chrono::steady_clock::now();
@@ -390,11 +301,7 @@ auto main(int argc, char** argv) -> int
 				if (n == n_edges_per_producer) break;
 
 				auto const key = tuple_to_key(*tuple);
-				auto const node = tlt.find(key);
-				require(node != nullptr);
-				require(node->has_value());
-
-				auto const service = node->value();
+				auto const service = tlt.lookup(key);
 				require(services[service].find(key));
 
 				n += 1;
