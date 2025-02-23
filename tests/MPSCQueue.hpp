@@ -1,10 +1,14 @@
 #pragma once
 
-#include "tree/tree.hpp"
+#include "tree/options.hpp"
+#include "tree/types.hpp"
+
 #include <blockingconcurrentqueue.h>
 #include <concurrentqueue.h>
 #include <mutex>
+#include <optional>
 #include <utility>
+#include <vector>
 
 namespace tree::tests
 {
@@ -60,9 +64,9 @@ namespace tree::tests
 				this->total += 1;
 			}
 			
-			constexpr auto enqueue(Glob const& glob) -> void
+			constexpr auto enqueue(std::vector<u128> const& keys) -> void
 			{
-				while (not this->_queue.enqueue_bulk(_token, glob.begin(), glob.size())) {
+				while (not this->_queue.enqueue_bulk(_token, keys.data(), keys.size())) {
 					this->stalls += 1;
 				}
 				this->total += 1;

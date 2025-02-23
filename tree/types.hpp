@@ -39,9 +39,6 @@ namespace tree
 		TREE_TYPES_MAKE_TYPE(std::uint64_t, u64)
 		TREE_TYPES_MAKE_TYPE(unsigned __int128, u128)
 
-		TREE_TYPES_MAKE_TYPE(std::size_t, uz)
-		TREE_TYPES_MAKE_TYPE(std::ptrdiff_t, z)
-		
 #undef TREE_TYPES_MAKE_TYPE
 
 		enum Fit {

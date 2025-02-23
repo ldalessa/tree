@@ -30,12 +30,8 @@ namespace tree
 			return _data.size();
 		}
 
-		auto begin() const -> decltype(_data.begin()) {
-			return _data.begin();
-		}
-
-		auto end() const -> decltype(_data.end()) {
-			return _data.end();
+		auto take_all() -> std::vector<u128> {
+			return std::move(_data);
 		}
 		
 		auto extract(stdr::range auto range) -> Glob

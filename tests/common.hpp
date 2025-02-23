@@ -1,6 +1,6 @@
 #pragma once
 
-#include "tree/tree.hpp"
+#include "tree/types.hpp"
 #include "ingest/mmio.hpp"
 
 namespace tree::tests {

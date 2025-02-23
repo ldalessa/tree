@@ -1,12 +1,12 @@
 #include "common.hpp"
 #include "require.hpp"
 #include "MPSCQueue.hpp"
+#include "TopLevelTree.hpp"
+
 #include "tree/tree.hpp"
 #include "ingest/mmio.hpp"
 
 #include <CLI/App.hpp>
-#include <concurrentqueue.h>
-#include <blockingconcurrentqueue.h>
 
 #include <algorithm>
 #include <barrier>
@@ -22,8 +22,6 @@
 using namespace tree;
 using namespace tree::tests;
 
-namespace mc = moodycamel;
-
 static constexpr auto service_to_consumer(u32 i, u32 n_services, u32 n_consumers) -> u32 {
 	auto const d = n_services / n_consumers + !!(n_services % n_consumers);
 	return i / d;
@@ -31,33 +29,6 @@ static constexpr auto service_to_consumer(u32 i, u32 n_services, u32 n_consumers
 
 namespace
 {
-	struct TopLevelTree
-	{
-		TreeNode<u32> _tree;
-		
-		TopLevelTree(u32 n_services) : _tree("0/0")
-		{
-			u32 const n_bits = std::countr_zero(std::bit_ceil(n_services));
-			for (u32 i = 0; i < n_services; ++i) {
-				auto const j = u128(i);
-				auto const key = Key(std::rotr(j, n_bits), n_bits);
-				_tree.insert_or_update(key, i);
-			}
-		}
-
-		auto lookup(u128 key) -> u32 {
-			return _tree.find(key)->value();
-		}
-		
-		auto insert(Key const& key) {
-			_tree.insert_or_update(key, close_mapping(key));
-		}
-		
-		static constexpr auto close_mapping(Key const& key) -> u32 {
-			return 0;
-		}
-	};
-
 	struct ConsumerQueues
 	{
 		std::deque<MPSCQueue> _queues;
@@ -69,7 +40,7 @@ namespace
 			}
 		}
 
-		constexpr auto get_rx_endpoint(uz i) -> MPSCQueue::RxEndpoint {
+		constexpr auto get_rx_endpoint(std::size_t i) -> MPSCQueue::RxEndpoint {
 			return _queues[i].get_rx_endpoint();
 		}
 		
@@ -80,6 +51,70 @@ namespace
 				out.emplace_back(q.get_tx_endpoint());
 			}
 			return out;
+		}
+	};
+
+	struct Service
+	{
+		TopLevelTree& _tlt;
+		TopLevelTree _bubbled; // TODO: don't need concurrent tree
+		GlobTreeNode _globs{"0/0"};
+
+		constexpr Service(u32 n_services, TopLevelTree& tlt)
+			: _tlt(tlt)
+			, _bubbled(n_services, false)
+		{
+		}
+
+		constexpr auto insert(u128 key) -> std::expected<bool, std::vector<u128>>
+		{
+			if (_bubbled.contains(key)) {
+				return std::unexpected<std::vector<u128>>(std::in_place, 1, key);
+			}
+			
+			return _globs.insert(key).transform_error([&](GlobTreeNode glob) -> std::vector<u128> {
+				_bubbled.insert(glob.key());
+				_tlt.insert(glob.key());
+				return glob.take_value().take_all();
+			});
+		}
+
+		constexpr auto contains(u128 key) -> bool {
+			return _globs.find(key, nullptr);
+		}
+	};
+
+	struct Services
+	{
+		using Allocator = std::allocator<Service>;
+		using Traits = std::allocator_traits<Allocator>;
+		
+		Allocator _allocator{};
+		Service* _services;
+		u32 _n_services;
+
+		constexpr ~Services() {
+			for (u32 i = 0, j = _n_services - 1; i < _n_services; ++i, --j) {
+				Traits::destroy(_allocator, _services + j);
+			}
+			Traits::deallocate(_allocator, _services, _n_services);
+		}
+		
+		constexpr Services(u32 n_services, TopLevelTree& tlt)
+			: _services(Traits::allocate(_allocator, n_services))
+			, _n_services(n_services)
+		{
+			for (u32 i = 0; i < n_services; ++i) {
+				Traits::construct(_allocator, _services + i, _n_services, tlt);
+			}
+		}
+
+		constexpr Services(Service const&) = delete;
+		constexpr Services(Service&&) = delete;
+		
+		constexpr auto operator[](std::size_t i) -> Service& {
+			require(i < _n_services);
+			return _services[i];
 		}
 	};
 }
@@ -127,29 +162,16 @@ auto main(int argc, char** argv) -> int
 	std::fflush(stdout);
 	
 	auto tlt = TopLevelTree(n_services);
-	
-	auto bubbled = std::vector<TopLevelTreeNode>();
+	auto services = Services(n_services, tlt);
 	auto queues = ConsumerQueues(n_consumers, n_producers, queue_size);
+
 	auto done_producing = std::atomic_flag(false);
 	auto cleanup = std::barrier(n_consumers + 1);
 	auto threads = std::vector<std::jthread>();
-	auto services = std::vector<GlobTreeNode>();
 
-	auto bubble_service = BlockingMPSCQueue();//(n_producers, 512);
-	auto bubbles_created = std::atomic<u32>();
-	auto bubbles_processed = std::atomic<u32>();	
-	
-	// Allocate local trees and the bubbles for each service.
-	services.reserve(n_services);
-	for (u32 i = 0; i < n_services; ++i) {
-		services.emplace_back("0/0");
-		bubbled.emplace_back("0/0");
-	}
-
-	// Allocate top level tree nodes for each service.	
+	// Allocate barriers to be used by the consumer and producer.
 	auto consumer_barrier = std::barrier(n_consumers + 1);
-
-	std::mutex token_mutex;
+	auto producer_barrier = std::barrier(n_producers + 1);
 	
 	// Start the consumer threads.
 	for (u32 i = 0; i < n_consumers; ++i) {
@@ -158,42 +180,25 @@ auto main(int argc, char** argv) -> int
 			std::print("starting consumer {}\n", id);
 
 			auto rx = queues.get_rx_endpoint(id);
-			auto bubbles = bubble_service.get_tx_endpoint();
 
 			consumer_barrier.arrive_and_wait();
 			
 			u64 n = 0;
-
 			auto handle_requests = [&] {
 				while (auto key = rx.try_dequeue()) {
 					auto const service = tlt.lookup(*key);
-					if (bubbled[service].find(*key, nullptr)) {
-						// just drop it for now
-						// std::print("WARNING: dropping key\n");
-						continue;
-					}
-
 					require(service_to_consumer(service, n_services, n_consumers) == id);
-					try {
-						require(services[service].insert(*key));
-						n += 1;
-					} catch (GlobTreeNode& node) {
-						bubbles_created += 1;
-						bubbled[service].insert_or_update(node._key, 0);
-						tlt.insert(node._key);
-						// bubbles.enqueue(node.value());
+					if (auto result = services[service].insert(*key); not result) {
+						static int x = 0;
+						std::print("dropping bubble {}\n", x++);
 					}
+					n += 1;
 				}
 			};
 			
 			while (not done_producing.test()) {
 				handle_requests();
 			}
-
-			do {
-				cleanup.arrive_and_wait();
-				handle_requests();
-			} while (bubbles_created != bubbles_processed);
 
 			require(rx.size() == 0);
 			
@@ -202,8 +207,6 @@ auto main(int argc, char** argv) -> int
 			std::print("consumer {} processed {} keys ({} stalls)\n", id, n, rx.stalls);
 		});
 	}
-
-	auto producer_barrier = std::barrier(n_producers + 1);
 	
 	// Start the producer threads.
 	for (u32 i = 0; i < n_producers; ++i) {
@@ -247,35 +250,6 @@ auto main(int argc, char** argv) -> int
 		});
 	}
 
-	// Bubble service.
-	threads.emplace_back([&]
-	{
-		auto tx = queues.get_tx_endpoints();
-		auto bubbles = bubble_service.get_rx_endpoint();
-		
-		auto process_requests = [&]
-		{
-			while (auto key = bubbles.try_dequeue()) {
-				auto const service = tlt.lookup(*key);
-				auto const consumer = service_to_consumer(service, n_services, n_consumers);
-				require(consumer < n_consumers);
-				tx[consumer].enqueue(*key);
-				bubbles_processed += 1;
-			}
-		};		
-
-		while (not done_producing.test()) {
-			process_requests();
-		}
-
-		do {
-			process_requests();
-			cleanup.arrive_and_wait();
-		} while (bubbles_processed != bubbles_created);
-
-		require(bubble_service.size() == 0);
-	});
-
 	auto const start_time = std::chrono::steady_clock::now();
 	consumer_barrier.arrive_and_wait();
 	producer_barrier.arrive_and_wait();
@@ -302,7 +276,7 @@ auto main(int argc, char** argv) -> int
 
 				auto const key = tuple_to_key(*tuple);
 				auto const service = tlt.lookup(key);
-				require(services[service].find(key));
+				require(services[service].contains(key));
 
 				n += 1;
 				m += 1;

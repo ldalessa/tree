@@ -62,7 +62,7 @@ namespace tree
 			assert(_data == _mask(_data, _size));
 		}
 	
-		template <uz N>
+		template <std::size_t N>
 		constexpr Key(char const (&str)[N], int base = 16)
 				: Key(stdr::begin(str), stdr::end(str), base)
 		{

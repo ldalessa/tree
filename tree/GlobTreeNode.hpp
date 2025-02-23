@@ -6,17 +6,12 @@
 #include "tree/Key.hpp"
 
 #include <cassert>
+#include <expected>
 #include <memory>
 #include <optional>
 
 namespace tree
-{
-	struct BubbleEvent
-	{
-		Key key;
-		Glob glob;
-	};
-	
+{	
 	struct GlobTreeNode
 	{
 		Key const _key{};
@@ -77,7 +72,7 @@ namespace tree
 			return best ? best->contains(key) : false; 
 		}
 
-		constexpr auto insert(u128 key, GlobTreeNode* best = nullptr) -> bool
+		constexpr auto insert(u128 key, GlobTreeNode* best = nullptr) -> std::expected<bool, GlobTreeNode>
 		{
 			assert(_key <= key);
 
@@ -137,7 +132,7 @@ namespace tree
 			}
 		}
 
-		constexpr auto _insert(u128 key) -> bool
+		constexpr auto _insert(u128 key) -> std::expected<bool, GlobTreeNode>
 		{
 			assert(_glob.has_value());
 			
@@ -158,7 +153,7 @@ namespace tree
 						throw error("Bubbled glob did not make space for key {}", key);
 					}
 				}
-				throw GlobTreeNode(bkey, std::move(glob));
+				return std::unexpected<GlobTreeNode>(std::in_place, bkey, std::move(glob));
 			}
 
 			auto [range, fit] = _glob->split_point(options::local_fit, _key);

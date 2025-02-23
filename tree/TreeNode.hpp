@@ -49,11 +49,11 @@ namespace tree
 				canonicalize();
 			}
 
-			constexpr auto operator[](uz i) const -> TreeNode* const& {
+			constexpr auto operator[](std::size_t i) const -> TreeNode* const& {
 				return _data[i];
 			}
 
-			constexpr auto operator[](uz i) -> TreeNode*& {
+			constexpr auto operator[](std::size_t i) -> TreeNode*& {
 				return _data[i];
 			}
 
