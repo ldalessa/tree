@@ -1,6 +1,7 @@
 #include "common.hpp"
 #include "require.hpp"
 #include "MPSCQueue.hpp"
+#include "QuiescenceBarrier.hpp"
 #include "TopLevelTree.hpp"
 
 #include "tree/tree.hpp"
@@ -166,7 +167,7 @@ auto main(int argc, char** argv) -> int
 	auto queues = ConsumerQueues(n_consumers, n_producers, queue_size);
 
 	auto done_producing = std::atomic_flag(false);
-	auto cleanup = std::barrier(n_consumers + 1);
+	auto cleanup = QuiescenceBarrier(n_consumers);
 	auto threads = std::vector<std::jthread>();
 
 	// Allocate barriers to be used by the consumer and producer.
@@ -184,8 +185,10 @@ auto main(int argc, char** argv) -> int
 			consumer_barrier.arrive_and_wait();
 			
 			u64 n = 0;
-			auto handle_requests = [&] {
+			auto handle_requests = [&]() -> bool {
+				bool active = false;
 				while (auto key = rx.try_dequeue()) {
+					active = true;
 					auto const service = tlt.lookup(*key);
 					require(service_to_consumer(service, n_services, n_consumers) == id);
 					if (auto result = services[service].insert(*key); not result) {
@@ -194,12 +197,15 @@ auto main(int argc, char** argv) -> int
 					}
 					n += 1;
 				}
+				return active;
 			};
 			
 			while (not done_producing.test()) {
 				handle_requests();
 			}
 
+			cleanup(handle_requests);
+			
 			require(rx.size() == 0);
 			
 			consumer_barrier.arrive_and_wait();
