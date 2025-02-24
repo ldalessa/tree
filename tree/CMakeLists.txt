@@ -15,7 +15,7 @@ add_library(tree INTERFACE
   GlobTreeNode.hpp
   Key.hpp
   NonBlockingTreeNode.hpp
-  TopLevelTreeNode.hpp
+  TreeNode.hpp
 )
 
 target_include_directories(tree INTERFACE $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}>)

@@ -139,6 +139,10 @@ namespace tree
 			return _value.load().value();
 		}
 
+		constexpr auto name() const -> std::string {
+			return std::format("{}", _key);
+		}
+		
 		constexpr auto find(Key key, Node const* best = nullptr) const
 			-> Node const*
 		{

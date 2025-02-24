@@ -16,30 +16,29 @@
 
 namespace tree
 {
-	struct TopLevelTreeNode
-	{
-		using Value = u32;
-
+	template <class Value>
+	struct TreeNode
+	{		
 		Key _key;
 		std::optional<Value> _value{};
-		std::unique_ptr<TopLevelTreeNode> _child[2]{};
+		std::unique_ptr<TreeNode> _child[2]{};
 
 		// Construct a node with no value.
-		constexpr TopLevelTreeNode(Key key)
+		constexpr TreeNode(Key key)
 				: _key(key)
 		{
 		}
 
 		// Construct a node with a value.
 		template <class... Ts>
-		constexpr TopLevelTreeNode(Key key, Ts&&... ts)
+		constexpr TreeNode(Key key, Ts&&... ts)
 				: _key(key)
 				, _value(std::forward<Ts>(ts)...)
 		{
 		}
 
 		// Construct a dominator node (with no value)
-		constexpr TopLevelTreeNode(std::unique_ptr<TopLevelTreeNode> a, std::unique_ptr<TopLevelTreeNode> b)
+		constexpr TreeNode(std::unique_ptr<TreeNode> a, std::unique_ptr<TreeNode> b)
 				: _key(a->_key ^ b->_key)
 				, _child{std::move(a), std::move(b)}
 		{
@@ -64,8 +63,8 @@ namespace tree
 		}
 
 		// Return the node with the value that best matches the key.
-		constexpr auto find(Key key, TopLevelTreeNode const* best = nullptr) const
-			-> TopLevelTreeNode const*
+		constexpr auto find(Key key, TreeNode const* best = nullptr) const
+			-> TreeNode const*
 		{
 			assert(_key <= key);
 
@@ -140,7 +139,7 @@ namespace tree
 				return;
 			}
 			
-			if (not less(_child[0]->_key, _child[1]->_key)) {
+			if (less(_child[1]->_key, _child[0]->_key)) {
 				using std::swap;
 				swap(_child[0], _child[1]);
 			}
@@ -154,7 +153,7 @@ namespace tree
 				_validate();
 			});
 			
-			auto node = std::make_unique<TopLevelTreeNode>(key, std::forward<Ts>(ts)...);
+			auto node = std::make_unique<TreeNode>(key, std::forward<Ts>(ts)...);
 			auto const& value = node->value();
 			
 			// if the node dominates either or both children, reorder them
@@ -188,24 +187,24 @@ namespace tree
 				
 			// case 3a:
 			if (a < b and b < c) {
-				_child[1] = std::make_unique<TopLevelTreeNode>(std::move(node), std::move(_child[1]));
+				_child[1] = std::make_unique<TreeNode>(std::move(node), std::move(_child[1]));
 				return value;
 			}
 
 			// case 3b:
 			if (a < b) {
-				_child[0] = std::make_unique<TopLevelTreeNode>(std::move(node), std::move(_child[0]));
+				_child[0] = std::make_unique<TreeNode>(std::move(node), std::move(_child[0]));
 				return value;
 			}
 
 			// case 3c:
 			if (a < c) {
-				_child[1] = std::make_unique<TopLevelTreeNode>(std::move(node), std::move(_child[1]));
+				_child[1] = std::make_unique<TreeNode>(std::move(node), std::move(_child[1]));
 				return value;
 			}
 
 			// case 3d:
-			_child[0] = std::make_unique<TopLevelTreeNode>(std::move(_child[0]), std::move(_child[1]));
+			_child[0] = std::make_unique<TreeNode>(std::move(_child[0]), std::move(_child[1]));
 			_child[1] = std::move(node);
 
 			return value;
@@ -220,7 +219,7 @@ namespace tree
 namespace tree::testing
 {
 	inline auto const test_top_level_tree_node_insert = test<[] {
-		TopLevelTreeNode root("0/0");
+		TreeNode<int> root("0/0");
 		assert(root._child[0] == nullptr);
 		assert(root._child[1] == nullptr);
 		
