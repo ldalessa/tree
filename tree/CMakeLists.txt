@@ -15,6 +15,7 @@ add_library(tree INTERFACE
   GlobTreeNode.hpp
   Key.hpp
   NonBlockingTreeNode.hpp
+  TopLevelTree.hpp
   TreeNode.hpp
 )
 

@@ -10,4 +10,5 @@
 #include "tree/GlobTreeNode.hpp"
 #include "tree/Key.hpp"
 #include "tree/NonBlockingTreeNode.hpp"
+#include "tree/TopLevelTree.hpp"
 #include "tree/TreeNode.hpp"

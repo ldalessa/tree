@@ -2,7 +2,6 @@
 #include "require.hpp"
 #include "MPSCQueue.hpp"
 #include "QuiescenceBarrier.hpp"
-#include "TopLevelTree.hpp"
 
 #include "tree/tree.hpp"
 #include "ingest/mmio.hpp"

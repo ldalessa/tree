@@ -3,7 +3,9 @@
 #include "tree/types.hpp"
 #include "tree/Key.hpp"
 #include "tree/NonBlockingTreeNode.hpp"
+
 #include <bit>
+#include <numeric>
 #include <optional>
 
 namespace tree::tests
