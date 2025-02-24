@@ -66,6 +66,10 @@ namespace tree::tests
 			return std::byteswap(x);
 		}
 
+		static constexpr auto _shift_left(u64 x, u32 n) -> u64 {
+			return (n == 64) ? 0 : x << n;
+		}
+		
 		constexpr auto _close_mapping(Key const& key) -> u32
 		{
 			// abcd .... | ABCD ....
@@ -90,7 +94,7 @@ namespace tree::tests
 		}
 
 		constexpr auto _mask_service(u64 x) const -> u64 {
-			u64 const mask = -1_u64 << _n_service_bits;
+			u64 const mask = _shift_left(-1_u64, 64 - _n_service_bits);
 			return x & mask;
 		}
 
