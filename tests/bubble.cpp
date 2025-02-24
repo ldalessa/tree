@@ -67,7 +67,7 @@ auto main(int argc, char** argv) -> int
 	u32 n_producers = 1_u32;
 	u32 n_services = 1_u32;
 	u64 n_edges = -1_u64;
-	u32 queue_size = 512_u32;
+	u32 queue_size = 1024_u32;
 	bool validate = true;
 	std::string path{};
 
@@ -75,7 +75,7 @@ auto main(int argc, char** argv) -> int
 	app.add_option("n_edges", n_edges, "The number of edges to process (default: all)");
 	app.add_option("-c, --n_consumers", n_consumers, std::format("The number of threads to use as consumers (default: {})", n_consumers));
 	app.add_option("-p, --n_producers", n_producers, std::format("The number of threads to use as producers (default: {})", n_producers));
-	app.add_option("-q, --queue_size", queue_size, std::format("The consumer queue size (default: {})", queue_size));
+	app.add_option("-q, --queue_size", queue_size, std::format("The queue size per producer (default: {})", queue_size));
 	app.add_option("-n, --n_services", n_services, "The number of services to provision (default: 1)");
 	app.add_flag("--validate,!--no-validate", validate, "Run the validation code (default: true)");
 	
@@ -103,7 +103,7 @@ auto main(int argc, char** argv) -> int
 	auto tlt = TopLevelTree(n_services);
 	auto services = Services(n_services, tlt);
 	auto queues = ConsumerQueues(n_consumers, n_producers, queue_size);
-	auto bubbles = MPSCBlockingQueue(); //MPSCBlockingQueue(n_consumers, 512);
+	auto bubbles = MPSCBlockingQueue(n_consumers, queue_size);
 	
 	auto done_producing = std::atomic_flag(false);
 	auto cleanup = QuiescenceBarrier(n_consumers + 1);
@@ -135,7 +135,9 @@ auto main(int argc, char** argv) -> int
 
 					// this key might have been moved
 					if (id != service_to_consumer(service, n_services, n_consumers)) {
-						std::print("discovered old key {:032x} {}\n", *key, id);
+						if (options::verbose) {
+							std::print("discovered old key {:032x} {}\n", *key, id);
+						}
 						tx.enqueue(*key);
 						continue;
 					}
@@ -192,7 +194,7 @@ auto main(int argc, char** argv) -> int
 				auto const service = tlt.lookup(key);
 				auto const consumer = service_to_consumer(service, n_services, n_consumers);
 				require(consumer < n_consumers);
-				tx[consumer].enqueue(key);
+				tx[consumer].try_enqueue(key);
 				n += 1;
 			}
 
@@ -253,29 +255,42 @@ auto main(int argc, char** argv) -> int
 		thread.join();
 	}
 
+	threads.clear();
+	
 	std::print("time: {}\n", end_time - start_time);
 	
 	if (validate) {
-		u64 m = 0;
-		for (u32 i = 0; i < n_producers; ++i) {
-			auto mm = ingest::mmio::Reader(path, n_producers, i);
-			u64 n = 0;
-			while (auto tuple = mm.next()) {
-				if (n == n_edges_per_producer) break;
+		std::atomic<u64> m = 0;
+		for (u32 i = 0; i < n_producers + n_consumers; ++i) {
+			threads.emplace_back([&,i=i]
+			{
+				auto mm = ingest::mmio::Reader(path, n_producers + n_consumers, i);
+				u64 n = 0;
+				while (auto tuple = mm.next()) {
+					if (n == n_edges_per_producer) break;
 
-				auto const key = tuple_to_key(*tuple);
-				auto const service = tlt.lookup(key);
-				if (not services[service].contains(key)) {
-					std::print("failed to find {:032x} in {}\n", key, service);
-					std::fflush(stdout);
-					assert(false);
+					auto const key = tuple_to_key(*tuple);
+					auto const service = tlt.lookup(key);
+					if (not services[service].contains(key)) {
+						std::print("failed to find {:032x} in {}\n", key, service);
+						std::fflush(stdout);
+						assert(false);
+					}
+					require(services[service].contains(key));
+
+					n += 1;
 				}
-				require(services[service].contains(key));
-
-				n += 1;
-				m += 1;
-			}
+				m += n;
+			});
 		}
-		std::print("validated {} tuples\n", m);
+
+		for (auto&& thread : threads) {
+			thread.join();
+		}
+
+		threads.clear();
+		
+		std::print("validated {} tuples\n", m.load());
 	}
+	
 }

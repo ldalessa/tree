@@ -25,7 +25,7 @@ namespace tree::tests
 		constexpr MPSCQueueImpl() = default;
 		
 		constexpr MPSCQueueImpl(u32 n_producers, u32 size)
-			: _queue(size, n_producers, 0)
+			: _queue(size * n_producers, n_producers, 0)
 		{
 		}
 
@@ -56,6 +56,14 @@ namespace tree::tests
 			{
 			}
 
+			constexpr auto try_enqueue(u128 key) -> void
+			{
+				while (not this->_queue.try_enqueue(_token, key)) {
+					this->stalls += 1;
+				}
+				this->total += 1;
+			}
+			
 			constexpr auto enqueue(u128 key) -> void
 			{
 				while (not this->_queue.enqueue(_token, key)) {
