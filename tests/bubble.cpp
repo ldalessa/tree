@@ -1,7 +1,9 @@
 #include "common.hpp"
 #include "require.hpp"
 #include "MPSCQueue.hpp"
+#include "NonMovableArray.hpp"
 #include "QuiescenceBarrier.hpp"
+#include "Service.hpp"
 
 #include "tree/tree.hpp"
 #include "ingest/mmio.hpp"
@@ -29,104 +31,30 @@ static constexpr auto service_to_consumer(u32 i, u32 n_services, u32 n_consumers
 
 namespace
 {
-	struct ConsumerQueues
+	struct ConsumerQueues : NonMovableArray<MPSCQueue>
 	{
-		std::deque<MPSCQueue> _queues;
-		
 		constexpr ConsumerQueues(u32 n_consumers, u32 n_producers, u32 size)
+				: NonMovableArray(n_consumers, n_producers + 1, size)
 		{
-			for (u32 i = 0; i < n_consumers; ++i) {
-				_queues.emplace_back(n_producers + 1, size);
-			}
 		}
 
-		constexpr auto get_rx_endpoint(std::size_t i) -> MPSCQueue::RxEndpoint {
-			return _queues[i].get_rx_endpoint();
+		constexpr auto get_rx_endpoint(this ConsumerQueues& self, std::size_t i) -> MPSCQueue::RxEndpoint {
+			return self[i].get_rx_endpoint();
 		}
 		
-		constexpr auto get_tx_endpoints() -> std::vector<MPSCQueue::TxEndpoint> {
+		constexpr auto get_tx_endpoints(this ConsumerQueues& self) -> std::vector<MPSCQueue::TxEndpoint> {
 			std::vector<MPSCQueue::TxEndpoint> out;
-			out.reserve(_queues.size());
-			for (auto&& q : _queues) {
+			out.reserve(self.size());
+			for (auto&& q : self) {
 				out.emplace_back(q.get_tx_endpoint());
 			}
 			return out;
 		}
 	};
 
-	struct Service
+	struct Services : NonMovableArray<Service>
 	{
-		TopLevelTree& _tlt;
-		TopLevelTree _bubbled; // TODO: don't need concurrent tree
-		GlobTreeNode _globs{"0/0"};
-		u32 _id;
-		
-		constexpr Service(u32 id, u32 n_services, TopLevelTree& tlt)
-			: _tlt(tlt)
-			, _bubbled(n_services, false)
-			, _id(id)
-		{
-		}
-
-		constexpr auto insert(u128 key) -> std::expected<bool, std::vector<u128>>
-		{
-			if (auto n = _bubbled.try_lookup(key)) {
-				assert(*n != _id);
-				return std::unexpected<std::vector<u128>>(std::in_place, 1, key);
-			}
-
-			if (auto insert = _globs.insert(key)) {
-				return std::move(insert).value();
-			}
-			else {
-				GlobTreeNode glob = std::move(insert).error();
-				if (_bubbled.owner(glob.key()) == _id) {
-					_globs.reinsert(std::move(glob));
-					return true;
-				}
-				_bubbled.insert(glob.key());
-				_tlt.insert(glob.key());
-				return std::unexpected(glob.take_value().take_all());
-			}
-		}
-
-		constexpr auto contains(u128 key) -> bool {
-			return _globs.find(key, nullptr);
-		}
-	};
-
-	struct Services
-	{
-		using Allocator = std::allocator<Service>;
-		using Traits = std::allocator_traits<Allocator>;
-		
-		Allocator _allocator{};
-		Service* _services;
-		u32 _n_services;
-
-		constexpr ~Services() {
-			for (u32 i = 0, j = _n_services - 1; i < _n_services; ++i, --j) {
-				Traits::destroy(_allocator, _services + j);
-			}
-			Traits::deallocate(_allocator, _services, _n_services);
-		}
-		
-		constexpr Services(u32 n_services, TopLevelTree& tlt)
-			: _services(Traits::allocate(_allocator, n_services))
-			, _n_services(n_services)
-		{
-			for (u32 i = 0; i < n_services; ++i) {
-				Traits::construct(_allocator, _services + i, i, _n_services, tlt);
-			}
-		}
-
-		constexpr Services(Service const&) = delete;
-		constexpr Services(Service&&) = delete;
-		
-		constexpr auto operator[](std::size_t i) -> Service& {
-			require(i < _n_services);
-			return _services[i];
-		}
+		using NonMovableArray::NonMovableArray;
 	};
 }
 
