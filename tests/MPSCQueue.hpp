@@ -69,7 +69,7 @@ namespace tree::tests
 				while (not this->_queue.enqueue_bulk(_token, keys.data(), keys.size())) {
 					this->stalls += 1;
 				}
-				this->total += 1;
+				this->total += keys.size();
 			}
 		};
 
@@ -87,6 +87,7 @@ namespace tree::tests
 
 			constexpr auto try_dequeue() -> std::optional<u128>
 			{
+				u128 key;
 				if (_size != 0) {
 					this->total += 1;
 					return _keys[--_size];
@@ -116,7 +117,7 @@ namespace tree::tests
 		using MPSCQueueImpl::MPSCQueueImpl;
 	};
 
-	struct BlockingMPSCQueue : MPSCQueueImpl<moodycamel::BlockingConcurrentQueue> {
+	struct MPSCBlockingQueue : MPSCQueueImpl<moodycamel::BlockingConcurrentQueue> {
 		using MPSCQueueImpl::MPSCQueueImpl;
 	};
 }

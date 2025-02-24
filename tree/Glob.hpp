@@ -30,6 +30,14 @@ namespace tree
 			return _data.size();
 		}
 
+		auto begin() const {
+			return _data.begin();
+		}
+
+		auto end() const {
+			return _data.end();
+		}
+		
 		auto take_all() -> std::vector<u128> {
 			return std::move(_data);
 		}

@@ -4,6 +4,7 @@
 #include "tree/Key.hpp"
 #include "tree/TreeNode.hpp"
 #include <bit>
+#include <optional>
 
 namespace tree::tests
 {
@@ -31,20 +32,27 @@ namespace tree::tests
 				_tree.insert_or_update(key, service);
 			}
 		}
-
-		constexpr auto contains(u128 key) -> bool {
-			return _tree.find(key, nullptr) != nullptr;
+		
+		constexpr auto try_lookup(u128 key) -> std::optional<u32> {
+			if (auto node = _tree.find(key, nullptr)) {
+				return node->value();
+			}
+			return std::nullopt;
 		}
 		
 		constexpr auto lookup(u128 key) -> u32 {
 			return _tree.find(key)->value();
 		}
 		
-		constexpr auto insert(Key const& key) {
+		constexpr auto insert(Key const& key) -> u32 {
 			auto const service = _close_mapping(key);
-			_tree.insert_or_update(key, service);
+			return _tree.insert_or_update(key, service);
 		}
 
+		constexpr auto owner(Key const& key) -> u32 {
+			return _close_mapping(key);
+		}
+		
 	private:
 		static constexpr auto _bitswap(u64 x) -> u64
 		{   

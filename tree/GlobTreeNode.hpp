@@ -97,6 +97,11 @@ namespace tree
 			return _glob.emplace().insert(key);
 		}
 
+		// Reinsert a glob that was ejected during bubbling. 
+		constexpr auto reinsert(GlobTreeNode&& node) -> void {
+			_insert(node.key(), node.take_value());
+		}
+
 	  private:
 		constexpr auto _validate() const -> void
 		{
