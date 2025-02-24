@@ -7,8 +7,6 @@
 
 #include <compare>
 #include <concepts>
-#include <mutex>
-#include <shared_mutex>
 #include <optional>
 #include <utility>
 
@@ -102,7 +100,6 @@ namespace tree
 		Key const _key;
 		std::atomic<value_box> _value{};
 		std::atomic<pair> _child{};
-		std::shared_mutex mutable _lock{};
 
 		constexpr ~NonBlockingTreeNode() {
 			delete _value.load()._data;
