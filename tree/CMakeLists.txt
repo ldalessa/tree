@@ -14,7 +14,6 @@ add_library(tree INTERFACE
   Glob.hpp
   GlobTreeNode.hpp
   Key.hpp
-  SPSCQueue.hpp
   TreeNode.hpp
   TopLevelTreeNode.hpp
 )

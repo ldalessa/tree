@@ -1,4 +1,5 @@
 #include "require.hpp"
+#include "MPSCQueue.hpp"
 #include "tree/tree.hpp"
 #include "ingest/mmio.hpp"
 

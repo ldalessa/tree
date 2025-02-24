@@ -9,6 +9,5 @@
 #include "tree/Glob.hpp"
 #include "tree/GlobTreeNode.hpp"
 #include "tree/Key.hpp"
-#include "tree/SPSCQueue.hpp"
 #include "tree/TreeNode.hpp"
 #include "tree/TopLevelTreeNode.hpp"

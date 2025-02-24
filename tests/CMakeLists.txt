@@ -6,8 +6,8 @@ FetchContent_Declare(
   GIT_TAG master)
 FetchContent_MakeAvailable(moodycamel)
 
-add_executable(mmio mmio.cpp)
-target_link_libraries(mmio tree pc::ingest)
+# add_executable(mmio mmio.cpp)
+# target_link_libraries(mmio tree pc::ingest)
   
 add_executable(globs globs.cpp)
 target_link_libraries(globs tree pc::ingest)

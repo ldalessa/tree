@@ -1,5 +1,6 @@
 #pragma once
 
+#include "tree/options.hpp"
 #include "tree/types.hpp"
 
 #include <atomic>
@@ -25,7 +26,9 @@ namespace tree::tests
 		
 		constexpr auto join(auto str, int active) -> bool
 		{
-			std::print("{} arriving at barrier active = {}\n", str, active);
+			if (options::verbose) {
+				std::print("{} arriving at barrier active = {}\n", str, active);
+			}
 			_active += active;
 			_barrier.arrive_and_wait();
 			return _quiescent_rounds < 2;
@@ -33,12 +36,7 @@ namespace tree::tests
 
 	private:
 		constexpr auto _reset_barrier() -> void {
-			if (_active.exchange(0)) {
-				_quiescent_rounds = 0;
-			}
-			else {
-				_quiescent_rounds += 1;
-			}
+			_quiescent_rounds = _active.exchange(0) ? 0 : _quiescent_rounds + 1;
 		}
 	};
 }
