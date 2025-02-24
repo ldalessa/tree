@@ -2,7 +2,7 @@
 
 #include "tree/types.hpp"
 #include "tree/Key.hpp"
-#include "tree/TreeNode.hpp"
+#include "tree/NonBlockingTreeNode.hpp"
 #include <bit>
 #include <optional>
 
@@ -10,7 +10,7 @@ namespace tree::tests
 {
 	struct TopLevelTree
 	{
-		TreeNode<u32> _tree;
+		NonBlockingTreeNode<u32> _tree;
 		u32 _n_services;
 		u32 _n_service_bits;
 		

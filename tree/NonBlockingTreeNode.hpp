@@ -15,8 +15,10 @@
 namespace tree
 {	
 	template <class Value>
-	struct TreeNode
+	struct NonBlockingTreeNode
 	{
+		using Node = NonBlockingTreeNode;
+		
 		struct value_box
 		{
 			Value* _data{};
@@ -39,21 +41,21 @@ namespace tree
 		
 		struct alignas(16) pair
 		{
-			TreeNode* _data[2]{};
+			Node* _data[2]{};
 			
 			constexpr pair() = default;
 			
-			constexpr pair(TreeNode* a, TreeNode* b)
+			constexpr pair(Node* a, Node* b)
 				: _data { a, b }
 			{
 				canonicalize();
 			}
 
-			constexpr auto operator[](std::size_t i) const -> TreeNode* const& {
+			constexpr auto operator[](std::size_t i) const -> Node* const& {
 				return _data[i];
 			}
 
-			constexpr auto operator[](std::size_t i) -> TreeNode*& {
+			constexpr auto operator[](std::size_t i) -> Node*& {
 				return _data[i];
 			}
 
@@ -102,26 +104,26 @@ namespace tree
 		std::atomic<pair> _child{};
 		std::shared_mutex mutable _lock{};
 
-		constexpr ~TreeNode() {
+		constexpr ~NonBlockingTreeNode() {
 			delete _value.load()._data;
 			delete _child.load()._data[0];
 			delete _child.load()._data[1];
 		}
 		
-		constexpr TreeNode(Key key)
+		constexpr NonBlockingTreeNode(Key key)
 				: _key(key)
 		{
 		}
 
 		template <class... Ts>
 		requires (sizeof...(Ts) != 0) and std::constructible_from<Value, Ts...>
-		constexpr TreeNode(Key key, Ts&&... ts)
+		constexpr NonBlockingTreeNode(Key key, Ts&&... ts)
 				: _key(key)
                 , _value(new Value(std::forward<Ts>(ts)...))
 		{
 		}
 
-		constexpr TreeNode(TreeNode *a, TreeNode *b)
+		constexpr NonBlockingTreeNode(Node *a, Node *b)
 				: _key(a->_key ^ b->_key)
 				, _child(pair(a, b))
 		{
@@ -140,8 +142,8 @@ namespace tree
 			return _value.load().value();
 		}
 
-		constexpr auto find(Key key, TreeNode const* best = nullptr) const
-			-> TreeNode const*
+		constexpr auto find(Key key, Node const* best = nullptr) const
+			-> Node const*
 		{
 			assert(_key <= key);
 
@@ -199,7 +201,7 @@ namespace tree
 		{
 			auto expected = child;
 			
-			auto const cas_child = [&](pair child, TreeNode* node, auto... nodes) -> Value const&
+			auto const cas_child = [&](pair child, Node* node, auto... nodes) -> Value const&
 			{
 				child.canonicalize();
 				child.validate(_key);
@@ -210,7 +212,7 @@ namespace tree
 				return node->value();
 			};
 			
-			auto node = new TreeNode(key, std::forward<Ts>(ts)...);
+			auto node = new Node(key, std::forward<Ts>(ts)...);
 			
 			{
 				pair p{};
@@ -248,24 +250,24 @@ namespace tree
 				
 			// case 3a:
 			if (a < b and b < c) {
-				child[1] = new TreeNode(node, std::exchange(child[1], nullptr));
+				child[1] = new Node(node, std::exchange(child[1], nullptr));
 				return cas_child(child, node, child[1]);
 			}
 
 			// case 3b:
 			if (a < b) {
-				child[0] = new TreeNode(node, std::exchange(child[0], nullptr));
+				child[0] = new Node(node, std::exchange(child[0], nullptr));
 				return cas_child(child, node, child[0]);
 			}
 
 			// case 3c:
 			if (a < c) {
-				child[1] = new TreeNode(node, std::exchange(child[1], nullptr));
+				child[1] = new Node(node, std::exchange(child[1], nullptr));
 				return cas_child(child, node, child[1]);
 			}
 
 			// case 3d:
-			child[0] = new TreeNode(std::exchange(child[0], nullptr), std::exchange(child[1], nullptr));
+			child[0] = new Node(std::exchange(child[0], nullptr), std::exchange(child[1], nullptr));
 			child[1] = node;
 			return cas_child(child, node, child[0]);
 		}
@@ -279,7 +281,7 @@ namespace tree
 namespace tree::testing
 {
 	inline const auto test_insert = test<[] {
-		TreeNode<int> root("0/0");
+		NonBlockingTreeNode<int> root("0/0");
 		assert(root._child.load()[0] == nullptr);
 		assert(root._child.load()[1] == nullptr);
 				

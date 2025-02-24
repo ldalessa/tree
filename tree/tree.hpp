@@ -9,5 +9,5 @@
 #include "tree/Glob.hpp"
 #include "tree/GlobTreeNode.hpp"
 #include "tree/Key.hpp"
-#include "tree/TreeNode.hpp"
+#include "tree/NonBlockingTreeNode.hpp"
 #include "tree/TopLevelTreeNode.hpp"
