@@ -205,10 +205,20 @@ auto main(int argc, char** argv) -> int
 				int active = 0;
 				while (auto key = rx.try_dequeue()) {
 					auto const service = tlt.lookup(*key);
-					require(service_to_consumer(service, n_services, n_consumers) == id);
+
+					// this key might have been moved
+					if (id != service_to_consumer(service, n_services, n_consumers)) {
+						std::print("discovered old key {:032x} {}\n", *key, id);
+						tx.enqueue(*key);
+						continue;
+					}
+
+					// try to insert this 
 					if (auto result = services[service].insert(*key); not result) {
 						tx.enqueue(result.error());
+						continue;
 					}
+					
 					n += 1;
 					active += 1;
 				}
