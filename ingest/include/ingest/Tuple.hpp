@@ -17,5 +17,13 @@ namespace ingest
 
         friend auto operator==(Tuple const&, Tuple const&) -> bool = default;
         friend auto operator<=>(Tuple const&, Tuple const&) = default;
+
+		constexpr auto to_key() const -> unsigned __int128 {
+			return ((unsigned __int128)(k) << 64) | b;
+		}
+		
+		constexpr operator unsigned __int128() const {
+			return to_key();
+		}
     };
 }

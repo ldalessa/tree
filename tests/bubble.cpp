@@ -1,4 +1,3 @@
-#include "common.hpp"
 #include "require.hpp"
 #include "MPSCQueue.hpp"
 #include "NonMovableArray.hpp"
@@ -192,12 +191,11 @@ auto main(int argc, char** argv) -> int
 			// Process each tuple.
 			while (auto tuple = mm.next()) {
 				if (n == n_edges_per_producer) break;
-				
-				auto const key = tuple_to_key(*tuple);
-				auto const service = tlt.lookup(key);
+
+				auto const service = tlt.lookup(*tuple);
 				auto const consumer = service_to_consumer(service, n_services, n_consumers);
 				require(consumer < n_consumers);
-				tx[consumer].try_enqueue(key);
+				tx[consumer].try_enqueue(*tuple);
 				n += 1;
 			}
 
@@ -272,14 +270,12 @@ auto main(int argc, char** argv) -> int
 				while (auto tuple = mm.next()) {
 					if (n == n_edges_per_producer) break;
 
-					auto const key = tuple_to_key(*tuple);
-					auto const service = tlt.lookup(key);
-					if (not services[service].contains(key)) {
-						std::print("failed to find {:032x} in {}\n", key, service);
+					auto const service = tlt.lookup(*tuple);
+					if (not services[service].contains(*tuple)) {
+						std::print("failed to find {:032x} in {}\n", tuple->to_key(), service);
 						std::fflush(stdout);
 						assert(false);
 					}
-					require(services[service].contains(key));
 
 					n += 1;
 				}

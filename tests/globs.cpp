@@ -1,4 +1,3 @@
-#include "common.hpp"
 #include "tree/tree.hpp"
 #include "ingest/mmio.hpp"
 
@@ -33,8 +32,7 @@ auto main(int argc, char** argv) -> int
 		u32 n = 0_u32;
 		while (auto tuple = mm.next()) {
 			if (n++ < n_edges) {
-				auto const key = tuple_to_key(*tuple);
-				tree.insert(key);
+				tree.insert(*tuple);
 			}
 			else {
 				break;
@@ -47,8 +45,7 @@ auto main(int argc, char** argv) -> int
 		u32 n = 0_u32;
 		while (auto tuple = mm.next()) {
 			if (n++ < n_edges) {
-				auto const key = tuple_to_key(*tuple);
-				assert(tree.find(key));
+				assert(tree.find(*tuple));
 			}
 			else {
 				break;
