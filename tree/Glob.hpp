@@ -59,7 +59,7 @@ namespace tree
 			return _data.erase(stdr::begin(range), stdr::end(range));
 		}
 
-		auto contains(u128 key) const -> Value const* {
+		auto find(u128 key) const -> Value const* {
 			if (auto i = stdr::find(_data, key, to_u128); i != _data.end()) {
 				return &*i;
 			}

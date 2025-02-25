@@ -75,7 +75,7 @@ namespace tree
 				return _child[0]->find(key, best);
 			}
 
-			return best ? best->contains(key) : nullptr;
+			return best ? best->find(key) : nullptr;
 		}
 
 		constexpr auto insert(u128 key, GlobTreeNode* best = nullptr) -> std::expected<bool, GlobTreeNode>
