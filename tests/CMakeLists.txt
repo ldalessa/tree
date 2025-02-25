@@ -14,6 +14,11 @@ target_link_libraries(globs tree pc::ingest)
 
 add_executable(bubble bubble.cpp)
 target_link_libraries(bubble tree pc::ingest concurrentqueue)
+target_compile_definitions(bubble PRIVATE VALUE_TYPE=u128)
+
+add_executable(tuples bubble.cpp)
+target_link_libraries(tuples tree pc::ingest concurrentqueue)
+target_compile_definitions(tuples PRIVATE VALUE_TYPE=ingest::Tuple)
 
 add_executable(camel camel.cpp)
 target_link_libraries(camel concurrentqueue)

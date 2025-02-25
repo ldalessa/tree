@@ -3,6 +3,8 @@
 #include <compare>
 #include <cstdint>
 #include <format>
+#include <ranges>
+#include <string_view>
 
 namespace ingest
 {
@@ -32,11 +34,16 @@ namespace ingest
 template <>
 struct std::formatter<ingest::Tuple>
 {
-	static constexpr auto parse(auto& ctx) -> decltype(ctx.begin()) {
-		return ctx.begin();
+	std::string_view _key_fmt{};
+	
+	constexpr auto parse(auto&& ctx) -> decltype(ctx.begin()) {
+		auto i = ctx.begin();
+		auto j = ranges::find(i, ctx.end(), '}');
+		_key_fmt = std::string_view(i, j);
+		return j;
 	}
 
-	static constexpr auto format(ingest::Tuple const& a, auto& ctx) {
-		return std::format_to(ctx.out(), "key:{:032x} {{{}, {}, {}, {}, {}}}", a.to_key(), a.k, a.type, a.b, a.c, a.d);
+	constexpr auto format(ingest::Tuple const& a, auto&& ctx) const -> decltype(ctx.out()) {
+		return std::format_to(ctx.out(), "key:{{}} {{{}, {}, {}, {}, {}}}", a.to_key(), _key_fmt, a.k, a.type, a.b, a.c, a.d);
 	}
 };

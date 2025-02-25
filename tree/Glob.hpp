@@ -43,7 +43,7 @@ namespace tree
 			return _data.end();
 		}
 		
-		auto take_all() -> std::vector<u128> {
+		auto take_all() -> std::vector<Value> {
 			return std::move(_data);
 		}
 		
@@ -59,14 +59,14 @@ namespace tree
 			return _data.erase(stdr::begin(range), stdr::end(range));
 		}
 
-		auto find(u128 key) const -> Value const* {
+		auto find(u128 const& key) const -> Value const* {
 			if (auto i = stdr::find(_data, key, to_u128); i != _data.end()) {
 				return &*i;
 			}
 			return nullptr;
 		}
 
-		auto insert(Value value) -> bool
+		auto insert(Value const& value) -> bool
 		{
 			if (_data.size() < _capacity) {
 				_data.push_back(value);

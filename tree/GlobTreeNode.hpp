@@ -79,7 +79,7 @@ namespace tree
 			return best ? best->find(key) : nullptr;
 		}
 
-		constexpr auto insert(Value value, GlobTreeNode* best = nullptr) -> std::expected<bool, GlobTreeNode>
+		constexpr auto insert(Value const& value, GlobTreeNode* best = nullptr) -> std::expected<bool, GlobTreeNode>
 		{
 			assert(_key <= value);
 
@@ -150,7 +150,7 @@ namespace tree
 			}
 		}
 
-		constexpr auto _insert(Value value) -> std::expected<bool, GlobTreeNode>
+		constexpr auto _insert(Value const& value) -> std::expected<bool, GlobTreeNode>
 		{
 			assert(_glob.has_value());
 			

@@ -12,11 +12,11 @@
 
 namespace tree::tests
 {
-	template <template <class> class QueueType>
+	template <template <class> class QueueType, class Value>
 	struct MPSCQueueImpl
 	{
-		struct Queue : QueueType<u128> {
-			using QueueType<u128>::QueueType;
+		struct Queue : QueueType<Value> {
+			using QueueType<Value>::QueueType;
 		};
 			
 		alignas(64) Queue _queue{};
@@ -56,35 +56,35 @@ namespace tree::tests
 			{
 			}
 
-			constexpr auto try_enqueue(u128 key) -> void
+			constexpr auto try_enqueue(Value const& value) -> void
 			{
-				while (not this->_queue.try_enqueue(_token, key)) {
+				while (not this->_queue.try_enqueue(_token, value)) {
 					this->stalls += 1;
 				}
 				this->total += 1;
 			}
 			
-			constexpr auto enqueue(u128 key) -> void
+			constexpr auto enqueue(Value const& value) -> void
 			{
-				while (not this->_queue.enqueue(_token, key)) {
+				while (not this->_queue.enqueue(_token, value)) {
 					this->stalls += 1;
 				}
 				this->total += 1;
 			}
 			
-			constexpr auto enqueue(std::vector<u128> const& keys) -> void
+			constexpr auto enqueue(std::vector<Value> const& values) -> void
 			{
-				while (not this->_queue.enqueue_bulk(_token, keys.data(), keys.size())) {
+				while (not this->_queue.enqueue_bulk(_token, values.data(), values.size())) {
 					this->stalls += 1;
 				}
-				this->total += keys.size();
+				this->total += values.size();
 			}
 		};
 
 		struct RxEndpoint : Endpoint
 		{
 			moodycamel::ConsumerToken _token;
-			std::unique_ptr<u128[]> _keys{new u128[options::default_glob_capacity]};
+			std::unique_ptr<Value[]> _values{new Value[options::default_glob_capacity]};
 			std::size_t _size{};
 			
 			constexpr RxEndpoint(Queue& queue)
@@ -93,15 +93,15 @@ namespace tree::tests
 			{
 			}
 
-			constexpr auto try_dequeue() -> std::optional<u128>
+			constexpr auto try_dequeue() -> std::optional<Value>
 			{
-				u128 key;
+				Value key;
 				if (_size != 0) {
 					this->total += 1;
-					return _keys[--_size];
+					return _values[--_size];
 				}
 				
-				if ((_size = this->_queue.try_dequeue_bulk(_token, _keys.get(), options::default_glob_capacity))) {
+				if ((_size = this->_queue.try_dequeue_bulk(_token, _values.get(), options::default_glob_capacity))) {
 					return try_dequeue();
 				}
 
@@ -121,11 +121,13 @@ namespace tree::tests
 		}
 	};
 
-	struct MPSCQueue : MPSCQueueImpl<moodycamel::ConcurrentQueue> {
-		using MPSCQueueImpl::MPSCQueueImpl;
+	template <class Value>
+	struct MPSCQueue : MPSCQueueImpl<moodycamel::ConcurrentQueue, Value> {
+		using MPSCQueueImpl<moodycamel::ConcurrentQueue, Value>::MPSCQueueImpl;
 	};
 
-	struct MPSCBlockingQueue : MPSCQueueImpl<moodycamel::BlockingConcurrentQueue> {
-		using MPSCQueueImpl::MPSCQueueImpl;
+	template <class Value>
+	struct MPSCBlockingQueue : MPSCQueueImpl<moodycamel::BlockingConcurrentQueue, Value> {
+		using MPSCQueueImpl<moodycamel::BlockingConcurrentQueue, Value>::MPSCQueueImpl;
 	};
 }

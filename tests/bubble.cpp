@@ -22,6 +22,8 @@
 using namespace tree;
 using namespace tree::tests;
 
+using ValueType = VALUE_TYPE;
+
 static constexpr auto service_to_consumer(u32 i, u32 n_services, u32 n_consumers) -> u32 {
 	auto const d = n_services / n_consumers + !!(n_services % n_consumers);
 	return i / d;
@@ -29,19 +31,19 @@ static constexpr auto service_to_consumer(u32 i, u32 n_services, u32 n_consumers
 
 namespace
 {
-	struct ConsumerQueues : NonMovableArray<MPSCQueue>
+	struct ConsumerQueues : NonMovableArray<MPSCQueue<ValueType>>
 	{
 		constexpr ConsumerQueues(u32 n_consumers, u32 n_producers, u32 size)
 				: NonMovableArray(n_consumers, n_producers + 1, size)
 		{
 		}
 
-		constexpr auto get_rx_endpoint(this ConsumerQueues& self, std::size_t i) -> MPSCQueue::RxEndpoint {
+		constexpr auto get_rx_endpoint(this ConsumerQueues& self, std::size_t i) -> MPSCQueue<ValueType>::RxEndpoint {
 			return self[i].get_rx_endpoint();
 		}
 		
-		constexpr auto get_tx_endpoints(this ConsumerQueues& self) -> std::vector<MPSCQueue::TxEndpoint> {
-			std::vector<MPSCQueue::TxEndpoint> out;
+		constexpr auto get_tx_endpoints(this ConsumerQueues& self) -> std::vector<MPSCQueue<ValueType>::TxEndpoint> {
+			std::vector<MPSCQueue<ValueType>::TxEndpoint> out;
 			out.reserve(self.size());
 			for (auto&& q : self) {
 				out.emplace_back(q.get_tx_endpoint());
@@ -50,7 +52,7 @@ namespace
 		}
 	};
 
-	struct Services : NonMovableArray<Service>
+	struct Services : NonMovableArray<Service<ValueType>>
 	{
 		using NonMovableArray::NonMovableArray;
 	};
@@ -105,7 +107,7 @@ auto main(int argc, char** argv) -> int
 	auto tlt = TopLevelTree(n_services);
 	auto services = Services(n_services, tlt);
 	auto queues = ConsumerQueues(n_consumers, n_producers, queue_size);
-	auto bubbles = MPSCBlockingQueue(n_consumers, queue_size);
+	auto bubbles = MPSCBlockingQueue<ValueType>(n_consumers, queue_size);
 	
 	auto done_producing = std::atomic_flag(false);
 	auto cleanup = QuiescenceBarrier(n_consumers + 1);
@@ -271,8 +273,8 @@ auto main(int argc, char** argv) -> int
 					if (n == n_edges_per_producer) break;
 
 					auto const service = tlt.lookup(*tuple);
-					if (not services[service].contains(*tuple)) {
-						std::print("failed to find {} in {}\n", *tuple, service);
+					if (auto t = services[service].find(*tuple); not t or *t != *tuple) {
+						std::print("failed to find {:032x} in {}\n", *tuple, service);
 						std::fflush(stdout);
 						assert(false);
 					}

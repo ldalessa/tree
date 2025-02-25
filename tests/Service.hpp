@@ -10,10 +10,11 @@
 
 namespace tree::tests
 {
+	template <class Value>
 	struct Service
 	{
 		TopLevelTree& _tlt;
-		GlobTreeNode<u128> _globs{"0/0"};
+		GlobTreeNode<Value> _globs{"0/0"};
 		u32 _id;
 		
 		constexpr Service(u32 id, u32 n_services, TopLevelTree& tlt)
@@ -22,9 +23,9 @@ namespace tree::tests
 		{
 		}
 
-		constexpr auto insert(u128 key) -> std::expected<bool, std::vector<u128>>
+		constexpr auto insert(Value const& value) -> std::expected<bool, std::vector<Value>>
 		{
-			if (auto insert = _globs.insert(key)) {
+			if (auto insert = _globs.insert(value)) {
 				return std::move(insert).value();
 			}
 			else {
@@ -38,7 +39,7 @@ namespace tree::tests
 			}
 		}
 
-		constexpr auto contains(u128 key) -> bool {
+		constexpr auto find(u128 const& key) -> Value const* {
 			return _globs.find(key, nullptr);
 		}
 
