@@ -14,6 +14,8 @@ namespace tree
 {	
 	struct GlobTreeNode
 	{
+		using Glob = tree::Glob<u128>;
+		
 		Key const _key{};
 		std::optional<Glob> _glob{};
 		std::unique_ptr<GlobTreeNode> _child[2]{};
@@ -57,7 +59,7 @@ namespace tree
 			return std::move(_glob.value());
 		}
 		
-		constexpr auto find(u128 key, Glob const* best = nullptr) const -> bool
+		constexpr auto find(u128 key, Glob const* best = nullptr) const -> u128 const*
 		{
 			assert(_key <= key);
 
@@ -73,7 +75,7 @@ namespace tree
 				return _child[0]->find(key, best);
 			}
 
-			return best ? best->contains(key) : false; 
+			return best ? best->contains(key) : nullptr;
 		}
 
 		constexpr auto insert(u128 key, GlobTreeNode* best = nullptr) -> std::expected<bool, GlobTreeNode>
