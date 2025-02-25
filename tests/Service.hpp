@@ -13,7 +13,7 @@ namespace tree::tests
 	struct Service
 	{
 		TopLevelTree& _tlt;
-		GlobTreeNode _globs{"0/0"};
+		GlobTreeNode<u128> _globs{"0/0"};
 		u32 _id;
 		
 		constexpr Service(u32 id, u32 n_services, TopLevelTree& tlt)

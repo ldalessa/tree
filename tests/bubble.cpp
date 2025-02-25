@@ -272,7 +272,7 @@ auto main(int argc, char** argv) -> int
 
 					auto const service = tlt.lookup(*tuple);
 					if (not services[service].contains(*tuple)) {
-						std::print("failed to find {:032x} in {}\n", tuple->to_key(), service);
+						std::print("failed to find {} in {}\n", *tuple, service);
 						std::fflush(stdout);
 						assert(false);
 					}

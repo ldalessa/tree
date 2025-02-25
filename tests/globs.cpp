@@ -25,7 +25,7 @@ auto main(int argc, char** argv) -> int
 		options::bubble = -1_u32;
 	}
 
-	auto tree = GlobTreeNode("0/0");
+	auto tree = GlobTreeNode<ingest::Tuple>("0/0");
 
 	{
 		auto mm = ingest::mmio::Reader(path);

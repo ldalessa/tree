@@ -2,6 +2,7 @@
 
 #include <compare>
 #include <cstdint>
+#include <format>
 
 namespace ingest
 {
@@ -27,3 +28,15 @@ namespace ingest
 		}
     };
 }
+
+template <>
+struct std::formatter<ingest::Tuple>
+{
+	static constexpr auto parse(auto& ctx) -> decltype(ctx.begin()) {
+		return ctx.begin();
+	}
+
+	static constexpr auto format(ingest::Tuple const& a, auto& ctx) {
+		return std::format_to(ctx.out(), "key:{:032x} {{{}, {}, {}, {}, {}}}", a.to_key(), a.k, a.type, a.b, a.c, a.d);
+	}
+};

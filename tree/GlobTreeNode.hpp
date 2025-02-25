@@ -11,10 +11,11 @@
 #include <optional>
 
 namespace tree
-{	
+{
+	template <class Value>
 	struct GlobTreeNode
 	{
-		using Glob = tree::Glob<u128>;
+		using Glob = tree::Glob<Value>;
 		
 		Key const _key{};
 		std::optional<Glob> _glob{};
@@ -59,7 +60,7 @@ namespace tree
 			return std::move(_glob.value());
 		}
 		
-		constexpr auto find(u128 key, Glob const* best = nullptr) const -> u128 const*
+		constexpr auto find(u128 key, Glob const* best = nullptr) const -> Value const*
 		{
 			assert(_key <= key);
 
@@ -78,29 +79,29 @@ namespace tree
 			return best ? best->find(key) : nullptr;
 		}
 
-		constexpr auto insert(u128 key, GlobTreeNode* best = nullptr) -> std::expected<bool, GlobTreeNode>
+		constexpr auto insert(Value value, GlobTreeNode* best = nullptr) -> std::expected<bool, GlobTreeNode>
 		{
-			assert(_key <= key);
+			assert(_key <= value);
 
 			if (_glob.has_value()) {
 				best = this;
 			}
 
-			if (_child[1] and _child[1]->_key <= key) {
-				return _child[1]->insert(key, best);
+			if (_child[1] and _child[1]->_key <= value) {
+				return _child[1]->insert(value, best);
 			}
 				
-			if (_child[0] and _child[0]->_key <= key) {
-				return _child[0]->insert(key, best);
+			if (_child[0] and _child[0]->_key <= value) {
+				return _child[0]->insert(value, best);
 			}
 
 			if (best) {
-				return best->_insert(key);
+				return best->_insert(value);
 			}
 
 			// failure path means there were no concrete nodes on the way here,
 			// so we'll upgrade to a concrete node and then insert the key here
-			return _glob.emplace().insert(key);
+			return _glob.emplace().insert(value);
 		}
 
 		// Reinsert a glob that was ejected during bubbling. 
@@ -149,25 +150,25 @@ namespace tree
 			}
 		}
 
-		constexpr auto _insert(u128 key) -> std::expected<bool, GlobTreeNode>
+		constexpr auto _insert(Value value) -> std::expected<bool, GlobTreeNode>
 		{
 			assert(_glob.has_value());
 			
-			if (_glob->insert(key)) {
+			if (_glob->insert(value)) {
 				return true;
 			}
 			
 			if (options::bubble <= _key.size()) {
 				auto [range, bkey] = _glob->split_point(options::global_fit, _key);
 				auto glob = _glob->extract(range);
-				if (bkey <= key) {
-					if (not glob.insert(key)) {
-						throw error("Bubbled glob does not have space for key {}", key);
+				if (bkey <= value) {
+					if (not glob.insert(value)) {
+						throw error("Bubbled glob does not have space for key {}", value);
 					}
 				}
 				else {
-					if (not _glob->insert(key)) {
-						throw error("Bubbled glob did not make space for key {}", key);
+					if (not _glob->insert(value)) {
+						throw error("Bubbled glob did not make space for key {}", value);
 					}
 				}
 				return std::unexpected<GlobTreeNode>(std::in_place, bkey, std::move(glob));
@@ -187,7 +188,7 @@ namespace tree
 			_insert(fit, _glob->extract(range));
 
 			// Restart the recursive insert.
-			return insert(key);
+			return insert(value);
 		}
 
 		constexpr auto _insert(Key key, Glob glob) -> void
@@ -295,7 +296,7 @@ namespace tree::testing
 		auto const bubble = std::exchange(tree::options::bubble, -1_u32);
 		auto const capacity = std::exchange(tree::options::default_glob_capacity, 2);
 
-		auto node = GlobTreeNode("0/0");
+		auto node = GlobTreeNode<u128>("0/0");
 		assert(node.insert(0));
 		assert(node.insert(1));
 		assert(node.insert(2));
