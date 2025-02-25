@@ -10,15 +10,14 @@
 
 #include <CLI/App.hpp>
 
-#include <algorithm>
+#include <atomic>
 #include <barrier>
-#include <bit>
 #include <chrono>
-#include <deque>
+#include <cstdio>
 #include <format>
 #include <print>
+#include <string>
 #include <thread>
-#include <utility>
 #include <vector>
 
 using namespace tree;
@@ -70,7 +69,9 @@ auto main(int argc, char** argv) -> int
 	u32 queue_size = 1024_u32;
 	bool validate = true;
 	std::string path{};
-
+	std::optional<std::string> tlt_path{};
+	std::optional<std::string> globs_path{};
+	
 	app.add_option("path", path, "The path to the mmio file")->required();
 	app.add_option("n_edges", n_edges, "The number of edges to process (default: all)");
 	app.add_option("-c, --n_consumers", n_consumers, std::format("The number of threads to use as consumers (default: {})", n_consumers));
@@ -78,6 +79,8 @@ auto main(int argc, char** argv) -> int
 	app.add_option("-q, --queue_size", queue_size, std::format("The queue size per producer (default: {})", queue_size));
 	app.add_option("-n, --n_services", n_services, "The number of services to provision (default: 1)");
 	app.add_flag("--validate,!--no-validate", validate, "Run the validation code (default: true)");
+	app.add_option("--tlt", tlt_path, "Output the top level tree to this path.");
+	app.add_option("--globs", globs_path, "Output the globs to this path.");
 	
 	CLI11_PARSE(app, argc, app.ensure_utf8(argv));
 	
@@ -292,5 +295,27 @@ auto main(int argc, char** argv) -> int
 		
 		std::print("validated {} tuples\n", m.load());
 	}
-	
+
+	if (tlt_path) {
+		auto out = std::fopen(tlt_path->c_str(), "w");
+		tlt.for_each_node([&](auto const& node) {
+			if (node.has_value()) {
+				std::print(out, "{:032x}/{} {}\n", node.key().data(), node.key().size(), node.value());
+			}
+		});
+		std::fclose(out);
+	}
+
+	if (globs_path) {
+		auto out = std::fopen(globs_path->c_str(), "w");
+		std::print(out, "service\tid\tsize\towner\n");
+		for (u32 i = 0; i < n_services; ++i) {
+			services[i].for_each_node([&](auto const& node) {
+				if (node.has_value()) {
+					std::print(out, "{}\t\"{:032x}/{}\"\t{}\t{}\n", i, node.key().data(), node.key().size(), node.value().size(), tlt.owner(node.key()));
+				}
+			});
+		}
+		std::fclose(out);
+	}
 }

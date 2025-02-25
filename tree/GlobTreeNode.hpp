@@ -43,6 +43,10 @@ namespace tree
 			return _key;
 		}
 
+		constexpr auto has_value() const -> bool {
+			return _glob.has_value();
+		}
+		
 		constexpr auto value() const -> Glob const& {
 			assert(_glob.has_value());
 			return _glob.value();
@@ -102,6 +106,12 @@ namespace tree
 			_insert(node.key(), node.take_value());
 		}
 
+		constexpr auto for_each_node(auto&& f) const -> void {
+			f(*this);
+			if (_child[0]) _child[0]->for_each_node(f);
+			if (_child[1]) _child[1]->for_each_node(f);
+		}
+		
 	  private:
 		constexpr auto _validate() const -> void
 		{

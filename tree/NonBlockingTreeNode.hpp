@@ -186,6 +186,13 @@ namespace tree
 	
 			return _insert(child, key, std::forward<Ts>(ts)...);
 		}
+
+		constexpr auto for_each_node(auto&& f) const -> void {
+			f(*this);
+			auto child = _child.load();
+			if (child[0]) child[0]->for_each_node(f);
+			if (child[1]) child[1]->for_each_node(f);
+		}
 		
 	  private:
 		template <class... Ts>

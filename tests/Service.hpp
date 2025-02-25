@@ -41,5 +41,9 @@ namespace tree::tests
 		constexpr auto contains(u128 key) -> bool {
 			return _globs.find(key, nullptr);
 		}
+
+		constexpr auto for_each_node(auto&& f) const -> void {
+			_globs.for_each_node(f);
+		}
 	};
 }

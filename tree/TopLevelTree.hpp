@@ -5,6 +5,7 @@
 #include "tree/NonBlockingTreeNode.hpp"
 
 #include <bit>
+#include <generator>
 #include <numeric>
 #include <optional>
 
@@ -53,6 +54,10 @@ namespace tree::tests
 
 		constexpr auto owner(Key const& key) -> u32 {
 			return _close_mapping(key);
+		}
+
+		auto for_each_node(auto&& f) const {
+			_tree.for_each_node(f);
 		}
 		
 	private:
@@ -106,7 +111,6 @@ namespace tree::tests
 
 		constexpr auto _get_reversed_target_service(u64 target) const -> u64 {
 			return _bitswap(_mask_service(target));
-		}		
+		}
 	};
-
 }
